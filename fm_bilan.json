@@ -11,7 +11,7 @@
   ],
   "python": "3.13.14",
   "dernier_lancement": "2026-10-12 00:55",
-  "lectures_s": 2.2,
+  "lectures_s": 7.2,
   "detecteur": "SIFT",
   "lectures_hdv_evitees": 0
  },
@@ -22,18 +22,18 @@
    "max": 1.207
   },
   "tour : capture": {
-   "n": 50635,
-   "total": 3843.466,
+   "n": 51156,
+   "total": 3871.05,
    "max": 1.035
   },
   "tour : lecture de l'atelier": {
-   "n": 50635,
-   "total": 4826.893,
+   "n": 51156,
+   "total": 4899.718,
    "max": 51.368
   },
   "tour : guide": {
-   "n": 50635,
-   "total": 1121.485,
+   "n": 51156,
+   "total": 1121.504,
    "max": 8.043
   },
   "repere interface": {
@@ -117,8 +117,8 @@
  },
  "page": {
   "ouverte": {
-   "n": 258,
-   "vu": "10-12 01:00:13",
+   "n": 259,
+   "vu": "10-12 01:01:13",
    "detail": "127.0.0.1"
   },
   "commande": {

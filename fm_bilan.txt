@@ -11,13 +11,13 @@
   10. [NON TESTÉ] Lignes en malus (demi-poids) — pas mesurable par l'outil
   11. [PAS CODÉ] Compteur du 2e % : échecs sans perte
   12. [PROBLÈME] Repères du décor trouvés (sortie, hôtel de vente, porte) — hdv 117/9782, sortie 304/366, porte 195/254 — attention : compte aussi les moments où une fenêtre couvrait le jeu
-  13. [OK] Pages web : réglages sur le PC et sur le téléphone — ouverte 258 fois, 47 commande(s) reçue(s) dont 1 du téléphone, 0 erreur(s)
+  13. [OK] Pages web : réglages sur le PC et sur le téléphone — ouverte 259 fois, 47 commande(s) reçue(s) dont 1 du téléphone, 0 erreur(s)
   14. [OK] Liste de plusieurs runes achetée de bout en bout, à la main — 1 liste(s) OK, 12 à vérifier ; dernière : Vitalité, Dommages
   15. [PROBLÈME] Noms de runes lus en entier à l'hôtel de vente (le moteur saute parfois un mot) — 12 nom(s) rejeté(s), 3 complété(s) par la liste ; dernier : Rune Prospe -> rune pa prospe (101 px)
   16. [PAS CODÉ] Annuler un ravitaillement / arrêt tout seul s'il n'avance plus
 
-BILAN DE L'OUTIL — depuis 2026-10-11 21:41 — écrit 2026-10-12 01:00:22
-Système : ouverture_page = fenêtre msedge lancée, lecture = rapid, opencv = 5.0.0, sift = True, ecrans = ['1920x1080'], python = 3.13.14, dernier_lancement = 2026-10-12 00:55, lectures_s = 2.2, detecteur = SIFT, lectures_hdv_evitees = 0
+BILAN DE L'OUTIL — depuis 2026-10-11 21:41 — écrit 2026-10-12 01:02:02
+Système : ouverture_page = fenêtre msedge lancée, lecture = rapid, opencv = 5.0.0, sift = True, ecrans = ['1920x1080'], python = 3.13.14, dernier_lancement = 2026-10-12 00:55, lectures_s = 7.2, detecteur = SIFT, lectures_hdv_evitees = 0
 
 1. RAVITAILLEMENT EN JEU : OK — parcours terminés : 15
    étape 1/7 : vue 47 fois, repère affiché 47 fois
@@ -55,21 +55,21 @@ Système : ouverture_page = fenêtre msedge lancée, lecture = rapid, opencv = 5
    Rune Vi x10 : vue 3 fois, lue en entier 3 fois | prix affiché 230 | prix du lot sur la fiche 2296 → unitaire + total cohérents | conseil : OK (230.0 k la rune, max 249.6) : confirme
    Rune Vi x100 : vue 1 fois, lue en entier 1 fois | prix affiché 238 | prix du lot sur la fiche 23849 → unitaire + total cohérents | conseil : TROP CHER (238.0 k la rune, max 210.0) : annule
 
-8. VITESSE : lectures par seconde 2.2
+8. VITESSE : lectures par seconde 7.2
    lecture d'un nom (moteur) 88 fois, moyenne 1.00 s, pire 2.47 s
    lecture rapide hdv     548 fois, moyenne 3269669.73 s, pire 1791778773.64 s — LENT
    repere decor           10543 fois, moyenne 0.05 s, pire 1.21 s
    repere interface       678 fois, moyenne 0.01 s, pire 0.07 s
-   tour : capture         50635 fois, moyenne 0.08 s, pire 1.03 s
-   tour : guide           50635 fois, moyenne 0.02 s, pire 8.04 s
-   tour : lecture de l'atelier 50635 fois, moyenne 0.10 s, pire 51.37 s
+   tour : capture         51156 fois, moyenne 0.08 s, pire 1.03 s
+   tour : guide           51156 fois, moyenne 0.02 s, pire 8.04 s
+   tour : lecture de l'atelier 51156 fois, moyenne 0.10 s, pire 51.37 s
 
 9. OPENCV : 5.0.0, détecteur SIFT
 
 12. PAGE DE RÉGLAGES : OK — ouverture : fenêtre msedge lancée
    commande       47 fois, dernière 10-12 00:56:22 | enregistrer depuis 127.0.0.1
    commande telephone 1 fois, dernière 10-12 00:02:38 | enregistrer
-   ouverte        258 fois, dernière 10-12 01:00:13 | 127.0.0.1
+   ouverte        259 fois, dernière 10-12 01:01:13 | 127.0.0.1
 
 ERREURS : 0
 

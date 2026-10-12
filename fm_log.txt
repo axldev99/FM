@@ -100649,3 +100649,10 @@ mss.exception.ScreenShotError: Windows graphics function failed: BitBlt: Cannot 
 01:00:06 ravitaillement en pause : une autre fenetre couvre le jeu
 01:00:06 RAVITAILLEMENT en pause : une autre fenêtre couvre le jeu. Je reprends dès qu'il est dégagé.
 01:00:22 2.2 lectures/s | lignes du tableau vues : 0 | stats lues : aucune | objectif : regle
+01:00:31 ligne ignoree (pas une stat connue) : 'F_TEL = os.path.join(ICI, "fm_tel'
+01:00:37 1.2 lectures/s | lignes du tableau vues : 0 | stats lues : aucune | objectif : regle
+01:00:53 3.9 lectures/s | lignes du tableau vues : 0 | stats lues : aucune | objectif : regle
+01:01:08 5.6 lectures/s | lignes du tableau vues : 0 | stats lues : aucune | objectif : regle
+01:01:23 6.6 lectures/s | lignes du tableau vues : 0 | stats lues : aucune | objectif : regle
+01:01:39 6.2 lectures/s | lignes du tableau vues : 0 | stats lues : aucune | objectif : regle
+01:01:54 7.2 lectures/s | lignes du tableau vues : 0 | stats lues : aucune | objectif : regle
