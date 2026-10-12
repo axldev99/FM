@@ -1,0 +1,171 @@
+{
+ "vi/base": {
+  "alerte": 20,
+  "cible": 23
+ },
+ "vi/pa": {
+  "alerte": 20,
+  "cible": 100,
+  "prix": 700
+ },
+ "vi/ra": {
+  "alerte": 20,
+  "cible": 100,
+  "prix": 240
+ },
+ "agi/base": {
+  "alerte": 20,
+  "cible": 100,
+  "prix": 100
+ },
+ "agi/pa": {
+  "alerte": 20,
+  "cible": 100,
+  "prix": 400
+ },
+ "agi/ra": {
+  "alerte": 20,
+  "cible": 100,
+  "prix": 1200
+ },
+ "sa/base": {
+  "alerte": 20,
+  "cible": 100,
+  "prix": 350
+ },
+ "sa/pa": {
+  "alerte": 20,
+  "cible": 100,
+  "prix": 1200
+ },
+ "sa/ra": {
+  "alerte": 20,
+  "cible": 100,
+  "prix": 3500
+ },
+ "po/base": {
+  "alerte": 20,
+  "cible": 100,
+  "prix": 10000
+ },
+ "do_air/base": {
+  "alerte": 20,
+  "cible": 100,
+  "prix": 1500
+ },
+ "do_air/pa": {
+  "alerte": 20,
+  "cible": 100,
+  "prix": 4500
+ },
+ "pp/base": {
+  "alerte": 20,
+  "cible": 100,
+  "prix": 400
+ },
+ "pp/pa": {
+  "alerte": 20,
+  "cible": 150,
+  "prix": 1500
+ },
+ "re_per_terre/base": {
+  "alerte": 20,
+  "cible": 100,
+  "prix": 2000
+ },
+ "esq_pm/base": {
+  "alerte": 20,
+  "cible": 100,
+  "prix": 900
+ },
+ "esq_pm/pa": {
+  "alerte": 20,
+  "cible": 100,
+  "prix": 3500
+ },
+ "re_pou/base": {
+  "alerte": 20,
+  "cible": 100,
+  "prix": 240
+ },
+ "re_pou/pa": {
+  "alerte": 20,
+  "cible": 100,
+  "prix": 3000
+ },
+ "pa/base": {
+  "alerte": 20,
+  "cible": 100
+ },
+ "do/base": {
+  "alerte": 20,
+  "cible": 32
+ },
+ "_marge": {
+  "pct": 20
+ },
+ "pui/base": {
+  "alerte": 20,
+  "cible": 100
+ },
+ "pui/pa": {
+  "alerte": 20,
+  "cible": 100
+ },
+ "pui/ra": {
+  "alerte": 20,
+  "cible": 100
+ },
+ "cri/base": {
+  "alerte": 20,
+  "cible": 100
+ },
+ "ini/base": {
+  "alerte": 20,
+  "cible": 100
+ },
+ "ini/pa": {
+  "alerte": 20,
+  "cible": 100
+ },
+ "ini/ra": {
+  "alerte": 20,
+  "cible": 100
+ },
+ "re_per_neutre/base": {
+  "alerte": 20,
+  "cible": 100
+ },
+ "re_per_feu/base": {
+  "alerte": 20,
+  "cible": 100
+ },
+ "re_per_eau/base": {
+  "alerte": 20,
+  "cible": 100
+ },
+ "tacle/base": {
+  "alerte": 20,
+  "cible": 100
+ },
+ "tacle/pa": {
+  "alerte": 20,
+  "cible": 100
+ },
+ "ret_pm/base": {
+  "alerte": 20,
+  "cible": 120
+ },
+ "ret_pm/pa": {
+  "alerte": 20,
+  "cible": 0
+ },
+ "re_cri/base": {
+  "alerte": 20,
+  "cible": 125
+ },
+ "re_cri/pa": {
+  "alerte": 20,
+  "cible": 100
+ }
+}

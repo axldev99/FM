@@ -1,0 +1,248 @@
+{
+ "depuis": "2026-10-11 17:31",
+ "systeme": {
+  "ouverture_page": "fenêtre msedge lancée",
+  "lecture": "rapid",
+  "opencv": "5.0.0",
+  "sift": true,
+  "ecrans": [
+   "1920x1080"
+  ],
+  "python": "3.13.14",
+  "dernier_lancement": "2026-10-11 18:25",
+  "lectures_s": 0.7,
+  "detecteur": "SIFT",
+  "lectures_hdv_evitees": 2
+ },
+ "page": {
+  "ouverte": {
+   "n": 80,
+   "vu": "10-11 19:00:13",
+   "detail": "127.0.0.1"
+  },
+  "commande": {
+   "n": 8,
+   "vu": "10-11 18:28:43",
+   "detail": "stock depuis 127.0.0.1"
+  }
+ },
+ "durees": {
+  "repere interface": {
+   "n": 333,
+   "total": 4.275,
+   "max": 0.044
+  },
+  "repere decor": {
+   "n": 1940,
+   "total": 676.808,
+   "max": 1.318
+  },
+  "lecture fiche hdv": {
+   "n": 32,
+   "total": 281.597,
+   "max": 31.316
+  },
+  "lecture rapide hdv": {
+   "n": 4,
+   "total": 18.221,
+   "max": 17.273
+  }
+ },
+ "reperes": {
+  "fermer": {
+   "n": 72,
+   "vu": "10-11 18:27:30",
+   "trouve": 72,
+   "point": [
+    1585,
+    178
+   ],
+   "cal": 0
+  },
+  "hdv": {
+   "n": 98,
+   "vu": "10-11 18:27:51",
+   "trouve": 14,
+   "point": [
+    822,
+    440
+   ],
+   "cal": 0
+  },
+  "sortie": {
+   "n": 131,
+   "vu": "10-11 18:27:37",
+   "trouve": 63,
+   "point": null,
+   "cal": 0
+  },
+  "equipement": {
+   "n": 246,
+   "vu": "10-11 18:27:38",
+   "trouve": 246,
+   "point": [
+    1223,
+    268
+   ],
+   "cal": 0
+  },
+  "recherche": {
+   "n": 15,
+   "vu": "10-11 18:29:45",
+   "trouve": 15,
+   "point": [
+    713,
+    262
+   ],
+   "cal": 0
+  },
+  "porte": {
+   "n": 1634,
+   "vu": "10-11 19:00:41",
+   "trouve": 27,
+   "point": null,
+   "cal": 0
+  },
+  "cordomager": {
+   "n": 77,
+   "vu": "10-11 18:20:25",
+   "trouve": 58,
+   "point": null,
+   "cal": 0
+  }
+ },
+ "etapes": {
+  "1": {
+   "n": 16,
+   "vu": "10-11 18:27:27",
+   "cadre": 16,
+   "sans_cadre": 0
+  },
+  "3": {
+   "n": 20,
+   "vu": "10-11 18:27:41",
+   "cadre": 5,
+   "sans_cadre": 15
+  },
+  "2": {
+   "n": 13,
+   "vu": "10-11 18:27:37",
+   "cadre": 5,
+   "sans_cadre": 8
+  },
+  "4": {
+   "n": 10,
+   "vu": "10-11 18:29:45",
+   "cadre": 6,
+   "sans_cadre": 0
+  },
+  "5": {
+   "n": 36,
+   "vu": "10-11 18:29:49",
+   "cadre": 9,
+   "sans_cadre": 27
+  },
+  "6": {
+   "n": 16,
+   "vu": "10-11 18:20:25",
+   "cadre": 10,
+   "sans_cadre": 6
+  },
+  "7": {
+   "n": 14,
+   "vu": "10-11 18:21:34",
+   "cadre": 14,
+   "sans_cadre": 0
+  }
+ },
+ "fiches": {
+  "Rune Do Terre": {
+   "n": 2,
+   "vu": "10-11 17:46:37",
+   "dans_liste": 0,
+   "moyen": 1447,
+   "lots": {
+    "10": 15299,
+    "100": 145897,
+    "1000": 1399966
+   },
+   "qte": null,
+   "liste": [
+    "rune do"
+   ]
+  },
+  "(nom illisible)": {
+   "n": 2,
+   "vu": "10-11 17:47:02",
+   "dans_liste": 0,
+   "moyen": 20,
+   "lots": {},
+   "qte": null,
+   "liste": [
+    "rune do"
+   ]
+  },
+  "POIDS1": {
+   "n": 1,
+   "vu": "10-11 17:47:16",
+   "dans_liste": 0,
+   "moyen": 1320,
+   "lots": {},
+   "qte": null,
+   "liste": [
+    "rune do"
+   ]
+  },
+  "Rune Do": {
+   "n": 2,
+   "vu": "10-11 18:18:17",
+   "dans_liste": 2,
+   "moyen": 1320,
+   "lots": {
+    "10": 11983,
+    "100": 129796,
+    "1000": 1499993
+   },
+   "qte": null,
+   "liste": [
+    "rune do"
+   ]
+  }
+ },
+ "hdv": {
+  "lecture complete de secours": {
+   "n": 13,
+   "vu": "10-11 18:30:00",
+   "utile": 0
+  }
+ },
+ "resultats": {
+  "Rune Do | Rune Do Air | Rune Do Neutre | Rune Do Per Ar | Rune Do Per Di": {
+   "n": 2,
+   "vu": "10-11 18:18:17",
+   "liste": [
+    "rune do"
+   ]
+  }
+ },
+ "achats": {
+  "? x?": {
+   "n": 1,
+   "vu": "10-11 18:13:19",
+   "prix": 12979,
+   "prix_lot": null,
+   "sens": "?",
+   "lu": 0,
+   "conseil": "pas dans ta liste d'achats, vérifie avant de confirmer"
+  },
+  "Rune Do x100": {
+   "n": 2,
+   "vu": "10-11 18:28:48",
+   "prix": 298,
+   "prix_lot": null,
+   "sens": "?",
+   "lu": 2,
+   "conseil": "prix incohérents (unitaire 298, total 129796 pour 100) : vérifie toi-même"
+  }
+ }
+}

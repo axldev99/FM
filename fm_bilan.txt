@@ -1,0 +1,76 @@
+ÉTAT DES LIMITES
+   1. [PROBLÈME] Ravitaillement complet, fait à la main en suivant les cadres — 2 terminé(s) OK, 13 à vérifier ; étapes vues : 1, 2, 3, 4, 5, 6, 7 sur 7
+   2. [À CONFIRMER] Cadre sur le bon atelier au retour — cordomager trouvé 104/141 à [789, 444]
+   3. [OK] Texte de recherche = nom exact de la rune à l'hôtel de vente — 9 fiche(s) lue(s), dont 5 reconnue(s) comme rune à acheter : Rune Pa Prospe, Rune Re Per Neutre, Rune Prospe, Rune Vi, Rune Do
+   4. [OK] Prix maximum par rune — 19 rune(s) sans prix max (plafond = prix moyen + 20 %) : vi/base, pa/base, do/base, pui/base, pui/pa, pui/ra, cri/base, ini/base
+   5. [NON TESTÉ] Repères hors du Port de givre — images de référence : Port de givre seulement
+   6. [OK] Fenêtre « Acheter » lue pour un lot de 10, 100 ou 1000 — Rune Pa Prospe x100 : prix affiché 1404, lot 140436 → unitaire + total cohérents ; Rune Prospe x100 : prix affiché 480, lot 47971 → unitaire + total cohérents ; Rune Vi x100 : prix affiché 238, lot 23849 → unitaire + total cohérents ; Rune Vi x10 : prix affiché 230, lot 2296 → unitaire + total cohérents
+   7. [PAS CODÉ] Rune d'un exo pas encore posé suivie dans le stock
+   8. [PROBLÈME] Vitesse de lecture de l'hôtel de vente — 548 lectures, moyenne 3269669.7 s, pire 1791778773.6 s (visé : 1,5 s) ; 0 relectures évitées (écran inchangé)
+   9. [OK] Comparaison d'image (OpenCV) — OpenCV 5.0.0, détecteur SIFT
+  10. [NON TESTÉ] Lignes en malus (demi-poids) — pas mesurable par l'outil
+  11. [PAS CODÉ] Compteur du 2e % : échecs sans perte
+  12. [PROBLÈME] Repères du décor trouvés (sortie, hôtel de vente, porte) — hdv 117/9782, sortie 304/366, porte 195/254 — attention : compte aussi les moments où une fenêtre couvrait le jeu
+  13. [OK] Pages web : réglages sur le PC et sur le téléphone — ouverte 258 fois, 47 commande(s) reçue(s) dont 1 du téléphone, 0 erreur(s)
+  14. [OK] Liste de plusieurs runes achetée de bout en bout, à la main — 1 liste(s) OK, 12 à vérifier ; dernière : Vitalité, Dommages
+  15. [PROBLÈME] Noms de runes lus en entier à l'hôtel de vente (le moteur saute parfois un mot) — 12 nom(s) rejeté(s), 3 complété(s) par la liste ; dernier : Rune Prospe -> rune pa prospe (101 px)
+  16. [PAS CODÉ] Annuler un ravitaillement / arrêt tout seul s'il n'avance plus
+
+BILAN DE L'OUTIL — depuis 2026-10-11 21:41 — écrit 2026-10-12 01:00:22
+Système : ouverture_page = fenêtre msedge lancée, lecture = rapid, opencv = 5.0.0, sift = True, ecrans = ['1920x1080'], python = 3.13.14, dernier_lancement = 2026-10-12 00:55, lectures_s = 2.2, detecteur = SIFT, lectures_hdv_evitees = 0
+
+1. RAVITAILLEMENT EN JEU : OK — parcours terminés : 15
+   étape 1/7 : vue 47 fois, repère affiché 47 fois
+   étape 2/7 : vue 64 fois, repère affiché 34 fois, repère manquant 30 fois
+   étape 3/7 : vue 43 fois, repère affiché 24 fois, repère manquant 19 fois
+   étape 4/7 : vue 43 fois, repère affiché 37 fois
+   étape 5/7 : vue 50 fois, repère affiché 14 fois, repère manquant 36 fois
+   étape 6/7 : vue 36 fois, repère affiché 22 fois, repère manquant 14 fois
+   étape 7/7 : vue 32 fois, repère affiché 32 fois
+   (OK = les étapes se sont enchaînées jusqu'au bout ; si un cadre était au mauvais endroit, ça se voit dans les images de fm_parcours, pas ici)
+
+2 et 5. REPÈRES (comparaison d'image) : OK
+   cordomager    cherché 141 fois, trouvé 104 fois | dernier point : [789, 444] | recalé à la main : non
+   equipement    cherché 390 fois, trouvé 390 fois | dernier point : [1223, 268] | recalé à la main : non | interface : « trouvé » non concluant (position par défaut si non reconnu)
+   fermer        cherché 283 fois, trouvé 283 fois | dernier point : [1587, 178] | recalé à la main : non | interface : « trouvé » non concluant (position par défaut si non reconnu)
+   hdv           cherché 9782 fois, trouvé 117 fois | dernier point : None | recalé à la main : non
+   porte         cherché 254 fois, trouvé 195 fois | dernier point : None | recalé à la main : non
+   recherche     cherché 5 fois, trouvé 5 fois | dernier point : [735, 262] | recalé à la main : non | interface : « trouvé » non concluant (position par défaut si non reconnu)
+   sortie        cherché 366 fois, trouvé 304 fois | dernier point : None | recalé à la main : non
+
+3. TEXTES DE RECHERCHE (nom lu sur la fiche = texte de ta liste ?) : PROBLEME
+   « Puissante Ceinture Fulgurante » lue 1 fois, reconnue dans la liste 0 fois | prix moyen 77944 | lots {'1': 11711171717} | en inventaire 3 | liste : ['rune pa prospe', 'rune ré per neutre', 'rune tac', 'rune pa tac', 'rune ret pme', 'rune pa ret pme', 'rune ré cri', 'rune pa ré cri', 'rune pui']
+   « Rune Do » lue 6 fois, reconnue dans la liste 6 fois | prix moyen 1361 | lots {'1': 1217, '10': 12772, '100': 130998, '1000': 1499993} | en inventaire 40 | liste : ['rune vi', 'rune do']
+   « Rune Do Per So » lue 1 fois, reconnue dans la liste 0 fois | prix moyen 24095 | lots {'1': 34928, '10': 399963, '100': 10000014, '1000': 37999999} | en inventaire 552 | liste : ['rune pa prospe', 'rune ré per neutre', 'rune tac', 'rune pa tac', 'rune ret pme', 'rune pa ret pme', 'rune ré cri', 'rune pa ré cri', 'rune pui']
+   « Rune Do Ren » lue 3 fois, reconnue dans la liste 0 fois | prix moyen 347 | lots {'1': 350, '10': 3447, '100': 34985, '1000': 499897} | en inventaire 0 | liste : ['rune vi', 'rune do']
+   « Rune Pa Prospe » lue 16 fois, reconnue dans la liste 16 fois | prix moyen 1272 | lots {'1': 1313, '10': 13388, '100': 140437, '1000': 1328997} | en inventaire 122 | liste : ['rune pa prospe', 'rune ré per neutre', 'rune tac', 'rune pa tac', 'rune ret pme', 'rune ré cri', 'rune pa ré cri', 'rune pui']
+   « Rune Prospe » lue 8 fois, reconnue dans la liste 8 fois | prix moyen 380 | lots {'1': 387, '10': 4397, '100': 47971, '1000': 469979} | en inventaire 0 | liste : ['rune prospe', 'rune pa prospe', 'rune ré per neutre', 'rune tac', 'rune pa tac', 'rune ret pme', 'rune ré cri', 'rune pa ré cri', 'rune pui']
+   « Rune Re Per Neutre » lue 3 fois, reconnue dans la liste 3 fois | prix moyen 1433 | lots {'1': 1192, '10': 13399, '100': 119884, '1000': 1191699} | en inventaire 200 | liste : ['rune ré per neutre', 'rune tac', 'rune pa tac', 'rune ret pme', 'rune ré cri', 'rune pa ré cri', 'rune pui']
+   « Rune Vi » lue 26 fois, reconnue dans la liste 26 fois | prix moyen 208 | lots {'1': 336, '10': 2375, '100': 23849, '1000': 234977} | en inventaire 30 | liste : ['rune vi', 'rune do']
+   « Rune Vie » lue 4 fois, reconnue dans la liste 0 fois | prix moyen 208 | lots {'1': 336, '10': 2296, '100': 23849, '1000': 234977} | en inventaire 0 | liste : ['rune vi', 'rune do']
+
+6. FENÊTRE « ACHETER » : OK
+   Rune Pa Prospe x100 : vue 2 fois, lue en entier 2 fois | prix affiché 1404 | prix du lot sur la fiche 140436 → unitaire + total cohérents | conseil : TROP CHER (1404.0 k la rune, max 1300.0) : annule
+   Rune Prospe x100 : vue 2 fois, lue en entier 2 fois | prix affiché 480 | prix du lot sur la fiche 47971 → unitaire + total cohérents | conseil : TROP CHER (480.0 k la rune, max 400.0) : annule
+   Rune Vi x10 : vue 3 fois, lue en entier 3 fois | prix affiché 230 | prix du lot sur la fiche 2296 → unitaire + total cohérents | conseil : OK (230.0 k la rune, max 249.6) : confirme
+   Rune Vi x100 : vue 1 fois, lue en entier 1 fois | prix affiché 238 | prix du lot sur la fiche 23849 → unitaire + total cohérents | conseil : TROP CHER (238.0 k la rune, max 210.0) : annule
+
+8. VITESSE : lectures par seconde 2.2
+   lecture d'un nom (moteur) 88 fois, moyenne 1.00 s, pire 2.47 s
+   lecture rapide hdv     548 fois, moyenne 3269669.73 s, pire 1791778773.64 s — LENT
+   repere decor           10543 fois, moyenne 0.05 s, pire 1.21 s
+   repere interface       678 fois, moyenne 0.01 s, pire 0.07 s
+   tour : capture         50635 fois, moyenne 0.08 s, pire 1.03 s
+   tour : guide           50635 fois, moyenne 0.02 s, pire 8.04 s
+   tour : lecture de l'atelier 50635 fois, moyenne 0.10 s, pire 51.37 s
+
+9. OPENCV : 5.0.0, détecteur SIFT
+
+12. PAGE DE RÉGLAGES : OK — ouverture : fenêtre msedge lancée
+   commande       47 fois, dernière 10-12 00:56:22 | enregistrer depuis 127.0.0.1
+   commande telephone 1 fois, dernière 10-12 00:02:38 | enregistrer
+   ouverte        258 fois, dernière 10-12 01:00:13 | 127.0.0.1
+
+ERREURS : 0
+
+Pas mesurable par l'outil : 4 (seuils, c'est ton choix), 7 (rune d'exo pas posé), 10 (malus), 11 (échecs sans perte).

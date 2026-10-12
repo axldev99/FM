@@ -1,0 +1,13 @@
+# secret : lien du telephone
+fm_telephone.txt
+fm_ntfy.txt
+fm_run.txt
+__pycache__/
+# version a clics (pas maintenue ici)
+activer_clics.py
+fm_avec_clics.py
+lancer_assistant.bat
+TESTS_A_FAIRE.md
+fm_debug_clics/
+fm_achats.txt
+fm_noms_reels.json

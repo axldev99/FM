@@ -1,0 +1,802 @@
+{
+ "items": [
+  {
+   "nom": "Branche Abrakleur",
+   "sig": [
+    [
+     "agi",
+     26,
+     40
+    ],
+    [
+     "fo",
+     26,
+     40
+    ],
+    [
+     "pp",
+     11,
+     15
+    ],
+    [
+     "re_per_air",
+     6,
+     8
+    ],
+    [
+     "re_per_neutre",
+     6,
+     8
+    ],
+    [
+     "sa",
+     26,
+     40
+    ],
+    [
+     "vi",
+     101,
+     150
+    ]
+   ],
+   "cibles": {
+    "vi": 140,
+    "fo": 38,
+    "agi": 38,
+    "sa": 35,
+    "pp": 10,
+    "re_per_neutre": 8,
+    "re_per_air": 8
+   },
+   "exos": {},
+   "regles": {},
+   "mode": "manuel"
+  },
+  {
+   "nom": "Bouton de Psikopompe 2 do so",
+   "sig": [
+    [
+     "agi",
+     31,
+     40
+    ],
+    [
+     "po",
+     1,
+     1
+    ],
+    [
+     "pp",
+     11,
+     15
+    ],
+    [
+     "pui",
+     31,
+     40
+    ],
+    [
+     "re_cri",
+     11,
+     15
+    ],
+    [
+     "re_per_feu",
+     7,
+     10
+    ],
+    [
+     "re_per_terre",
+     7,
+     10
+    ],
+    [
+     "ret_pm",
+     7,
+     10
+    ],
+    [
+     "sa",
+     31,
+     40
+    ],
+    [
+     "soin",
+     11,
+     15
+    ],
+    [
+     "vi",
+     201,
+     250
+    ]
+   ],
+   "cibles": {
+    "vi": 240,
+    "agi": 38,
+    "sa": 36,
+    "pui": 38,
+    "po": 1,
+    "soin": 0,
+    "pp": 0,
+    "re_per_terre": 10,
+    "re_per_feu": 10,
+    "ret_pm": 9,
+    "re_cri": 15
+   },
+   "exos": {
+    "do_per_so": 2
+   },
+   "regles": {},
+   "mins": {
+    "vi": 240,
+    "agi": 36,
+    "sa": 25,
+    "pui": 36,
+    "po": 1,
+    "re_per_terre": 10,
+    "re_per_feu": 10,
+    "ret_pm": 4,
+    "re_cri": 15
+   },
+   "plan_b": null,
+   "mode": "manuel"
+  },
+  {
+   "nom": "Aiguille Psikopompe 2% do so",
+   "sig": [
+    [
+     "agi",
+     31,
+     40
+    ],
+    [
+     "do",
+     4,
+     6
+    ],
+    [
+     "do_air",
+     9,
+     12
+    ],
+    [
+     "po",
+     1,
+     1
+    ],
+    [
+     "pp",
+     11,
+     15
+    ],
+    [
+     "pui",
+     31,
+     40
+    ],
+    [
+     "re_cri",
+     11,
+     15
+    ],
+    [
+     "re_per_air",
+     5,
+     7
+    ],
+    [
+     "re_per_neutre",
+     5,
+     7
+    ],
+    [
+     "ret_pm",
+     4,
+     6
+    ],
+    [
+     "sa",
+     21,
+     30
+    ],
+    [
+     "vi",
+     401,
+     450
+    ]
+   ],
+   "cibles": {
+    "vi": 440,
+    "agi": 38,
+    "sa": 26,
+    "pui": 38,
+    "po": 1,
+    "do": 6,
+    "do_air": 12,
+    "pp": 0,
+    "re_per_neutre": 7,
+    "re_per_air": 7,
+    "ret_pm": 5,
+    "re_cri": 15
+   },
+   "exos": {
+    "do_per_so": 2
+   },
+   "regles": {
+    "vi": {
+     "pa": [
+      0,
+      299
+     ],
+     "ra": [
+      300,
+      505
+     ]
+    },
+    "agi": {
+     "pa": [
+      0,
+      29
+     ],
+     "ra": [
+      30,
+      35
+     ]
+    },
+    "sa": {
+     "pa": [
+      0,
+      27
+     ]
+    },
+    "pui": {
+     "base": [
+      0,
+      14
+     ],
+     "pa": [
+      15,
+      37
+     ]
+    },
+    "do_air": {
+     "base": [
+      0,
+      8
+     ],
+     "pa": [
+      9,
+      9
+     ]
+    },
+    "pp": {
+     "pa": [
+      0,
+      12
+     ]
+    },
+    "ret_pm": {
+     "pa": [
+      0,
+      3
+     ]
+    },
+    "re_cri": {
+     "pa": [
+      0,
+      12
+     ]
+    }
+   },
+   "mins": {
+    "vi": 438,
+    "agi": 36,
+    "sa": 15,
+    "pui": 36,
+    "po": 1,
+    "do": 5,
+    "do_air": 12,
+    "pp": 0,
+    "re_per_neutre": 7,
+    "re_per_air": 7,
+    "ret_pm": 0,
+    "re_cri": 15
+   },
+   "remonte": {
+    "vi": 438,
+    "agi": 36,
+    "sa": 25,
+    "pui": 36,
+    "po": 1,
+    "do": 5,
+    "do_air": 12,
+    "re_per_neutre": 7,
+    "re_per_air": 7,
+    "ret_pm": 4,
+    "re_cri": 15
+   },
+   "plan_b": null,
+   "mode": "manuel"
+  },
+  {
+   "nom": "Meriana 2 do sort",
+   "sig": [
+    [
+     "cri",
+     7,
+     10
+    ],
+    [
+     "do_per_so",
+     3,
+     4
+    ],
+    [
+     "fuite",
+     31,
+     40
+    ],
+    [
+     "invo",
+     1,
+     1
+    ],
+    [
+     "pa",
+     1,
+     1
+    ],
+    [
+     "pm",
+     1,
+     1
+    ],
+    [
+     "pui",
+     61,
+     80
+    ],
+    [
+     "re_per_air",
+     3,
+     4
+    ],
+    [
+     "re_per_eau",
+     3,
+     4
+    ],
+    [
+     "re_per_feu",
+     3,
+     4
+    ],
+    [
+     "re_per_terre",
+     3,
+     4
+    ],
+    [
+     "sa",
+     41,
+     60
+    ],
+    [
+     "vi",
+     151,
+     200
+    ]
+   ],
+   "cibles": {
+    "vi": 194,
+    "sa": 58,
+    "pui": 78,
+    "cri": 10,
+    "pa": 1,
+    "pm": 1,
+    "invo": 1,
+    "re_per_terre": 4,
+    "re_per_feu": 4,
+    "re_per_eau": 4,
+    "re_per_air": 4,
+    "fuite": 38,
+    "do_per_so": 6
+   },
+   "exos": {},
+   "regles": {
+    "vi": {
+     "pa": [
+      0,
+      149
+     ],
+     "ra": [
+      150,
+      175
+     ]
+    },
+    "sa": {
+     "pa": [
+      0,
+      47
+     ],
+     "ra": [
+      48,
+      60
+     ]
+    },
+    "pui": {
+     "base": [
+      0,
+      14
+     ],
+     "pa": [
+      15,
+      60
+     ],
+     "ra": [
+      61,
+      80
+     ]
+    },
+    "fuite": {
+     "pa": [
+      0,
+      37
+     ]
+    }
+   },
+   "mins": {
+    "vi": 190,
+    "sa": 35,
+    "pui": 72,
+    "cri": 10,
+    "pa": 1,
+    "pm": 1,
+    "invo": 1,
+    "re_per_terre": 4,
+    "re_per_feu": 4,
+    "re_per_eau": 4,
+    "re_per_air": 4,
+    "fuite": 25
+   },
+   "remonte": {
+    "vi": 190,
+    "sa": 55,
+    "pui": 75,
+    "cri": 10,
+    "pa": 1,
+    "pm": 1,
+    "invo": 1,
+    "re_per_terre": 4,
+    "re_per_feu": 4,
+    "re_per_eau": 4,
+    "re_per_air": 4,
+    "fuite": 35
+   },
+   "plan_b": null,
+   "mode": "manuel"
+  },
+  {
+   "nom": "Gant du Valet Veinard BJ",
+   "sig": [
+    [
+     "agi",
+     41,
+     60
+    ],
+    [
+     "do_air",
+     11,
+     15
+    ],
+    [
+     "esq_pm",
+     4,
+     6
+    ],
+    [
+     "po",
+     1,
+     1
+    ],
+    [
+     "pp",
+     11,
+     15
+    ],
+    [
+     "re_per_terre",
+     7,
+     10
+    ],
+    [
+     "re_pou",
+     11,
+     15
+    ],
+    [
+     "sa",
+     31,
+     40
+    ],
+    [
+     "vi",
+     251,
+     300
+    ]
+   ],
+   "cibles": {
+    "vi": 300,
+    "agi": 60,
+    "sa": 40,
+    "po": 1,
+    "do_air": 15,
+    "pp": 15,
+    "re_per_terre": 10,
+    "esq_pm": 6,
+    "re_pou": 15
+   },
+   "exos": {},
+   "regles": {
+    "vi": {
+     "pa": [
+      0,
+      249
+     ],
+     "ra": [
+      250,
+      275
+     ]
+    },
+    "agi": {
+     "pa": [
+      0,
+      49
+     ],
+     "ra": [
+      50,
+      55
+     ]
+    },
+    "sa": {
+     "pa": [
+      0,
+      37
+     ]
+    },
+    "do_air": {
+     "base": [
+      0,
+      11
+     ],
+     "pa": [
+      12,
+      12
+     ]
+    },
+    "pp": {
+     "pa": [
+      0,
+      12
+     ]
+    },
+    "esq_pm": {
+     "pa": [
+      0,
+      3
+     ]
+    },
+    "re_pou": {
+     "pa": [
+      0,
+      12
+     ]
+    }
+   },
+   "mins": {
+    "vi": 298,
+    "agi": 58,
+    "sa": 38,
+    "po": 1,
+    "do_air": 15,
+    "re_per_terre": 10,
+    "esq_pm": 6,
+    "re_pou": 15
+   },
+   "remonte": {},
+   "plan_b": null,
+   "mode": "manuel"
+  },
+  {
+   "nom": "Ceinture Kongoku TBJ",
+   "sig": [
+    [
+     "cri",
+     4,
+     5
+    ],
+    [
+     "ini",
+     401,
+     600
+    ],
+    [
+     "po",
+     1,
+     1
+    ],
+    [
+     "pp",
+     11,
+     15
+    ],
+    [
+     "pui",
+     21,
+     30
+    ],
+    [
+     "re_cri",
+     11,
+     15
+    ],
+    [
+     "re_per_eau",
+     5,
+     7
+    ],
+    [
+     "re_per_feu",
+     5,
+     7
+    ],
+    [
+     "re_per_neutre",
+     5,
+     7
+    ],
+    [
+     "ret_pm",
+     5,
+     7
+    ],
+    [
+     "sa",
+     31,
+     40
+    ],
+    [
+     "tacle",
+     9,
+     12
+    ],
+    [
+     "vi",
+     301,
+     350
+    ]
+   ],
+   "cibles": {
+    "vi": 340,
+    "sa": 38,
+    "pui": 28,
+    "cri": 5,
+    "po": 1,
+    "pp": 15,
+    "ini": 580,
+    "re_per_neutre": 7,
+    "re_per_feu": 7,
+    "re_per_eau": 7,
+    "tacle": 12,
+    "ret_pm": 7,
+    "re_cri": 15
+   },
+   "exos": {},
+   "regles": {
+    "vi": {
+     "pa": [
+      0,
+      299
+     ],
+     "ra": [
+      300,
+      505
+     ]
+    },
+    "sa": {
+     "pa": [
+      0,
+      37
+     ]
+    },
+    "pui": {
+     "base": [
+      0,
+      14
+     ],
+     "pa": [
+      15,
+      27
+     ]
+    },
+    "pp": {
+     "pa": [
+      0,
+      12
+     ]
+    },
+    "ini": {
+     "pa": [
+      0,
+      499
+     ],
+     "ra": [
+      500,
+      550
+     ]
+    },
+    "tacle": {
+     "pa": [
+      0,
+      9
+     ]
+    },
+    "ret_pm": {
+     "pa": [
+      0,
+      4
+     ]
+    },
+    "re_cri": {
+     "pa": [
+      0,
+      12
+     ]
+    }
+   },
+   "mins": {},
+   "remonte": {},
+   "plan_b": null,
+   "mode": "manuel"
+  },
+  {
+   "nom": "Ceinture fulgu vita",
+   "sig": [
+    [
+     "do",
+     4,
+     5
+    ],
+    [
+     "pa",
+     1,
+     1
+    ],
+    [
+     "sa",
+     31,
+     40
+    ],
+    [
+     "vi",
+     31,
+     40
+    ]
+   ],
+   "cibles": {
+    "vi": 180,
+    "sa": 38,
+    "pa": 1,
+    "do": 5
+   },
+   "exos": {},
+   "regles": {},
+   "mins": {},
+   "remonte": {},
+   "plan_b": null,
+   "nom_jeu": "Puissante Ceinture Fulgurante",
+   "mode": "manuel"
+  }
+ ]
+}

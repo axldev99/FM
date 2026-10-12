@@ -1,0 +1,619 @@
+{
+ "depuis": "2026-10-11 21:41",
+ "avis": {},
+ "systeme": {
+  "ouverture_page": "fenêtre msedge lancée",
+  "lecture": "rapid",
+  "opencv": "5.0.0",
+  "sift": true,
+  "ecrans": [
+   "1920x1080"
+  ],
+  "python": "3.13.14",
+  "dernier_lancement": "2026-10-12 00:55",
+  "lectures_s": 2.2,
+  "detecteur": "SIFT",
+  "lectures_hdv_evitees": 0
+ },
+ "durees": {
+  "repere decor": {
+   "n": 10543,
+   "total": 566.374,
+   "max": 1.207
+  },
+  "tour : capture": {
+   "n": 50635,
+   "total": 3843.466,
+   "max": 1.035
+  },
+  "tour : lecture de l'atelier": {
+   "n": 50635,
+   "total": 4826.893,
+   "max": 51.368
+  },
+  "tour : guide": {
+   "n": 50635,
+   "total": 1121.485,
+   "max": 8.043
+  },
+  "repere interface": {
+   "n": 678,
+   "total": 7.571,
+   "max": 0.065
+  },
+  "lecture rapide hdv": {
+   "n": 548,
+   "total": 1791779010.772,
+   "max": 1791778773.644
+  },
+  "lecture d'un nom (moteur)": {
+   "n": 88,
+   "total": 87.751,
+   "max": 2.468
+  }
+ },
+ "reperes": {
+  "hdv": {
+   "n": 9782,
+   "vu": "10-12 00:58:52",
+   "trouve": 117,
+   "point": null,
+   "cal": 0
+  },
+  "sortie": {
+   "n": 366,
+   "vu": "10-12 00:55:11",
+   "trouve": 304,
+   "point": null,
+   "cal": 0
+  },
+  "fermer": {
+   "n": 283,
+   "vu": "10-12 01:00:06",
+   "trouve": 283,
+   "point": [
+    1587,
+    178
+   ],
+   "cal": 0
+  },
+  "equipement": {
+   "n": 390,
+   "vu": "10-12 00:50:08",
+   "trouve": 390,
+   "point": [
+    1223,
+    268
+   ],
+   "cal": 0
+  },
+  "porte": {
+   "n": 254,
+   "vu": "10-12 00:25:19",
+   "trouve": 195,
+   "point": null,
+   "cal": 0
+  },
+  "cordomager": {
+   "n": 141,
+   "vu": "10-12 00:24:55",
+   "trouve": 104,
+   "point": [
+    789,
+    444
+   ],
+   "cal": 0
+  },
+  "recherche": {
+   "n": 5,
+   "vu": "10-12 00:24:22",
+   "trouve": 5,
+   "point": [
+    735,
+    262
+   ],
+   "cal": 0
+  }
+ },
+ "page": {
+  "ouverte": {
+   "n": 258,
+   "vu": "10-12 01:00:13",
+   "detail": "127.0.0.1"
+  },
+  "commande": {
+   "n": 47,
+   "vu": "10-12 00:56:22",
+   "detail": "enregistrer depuis 127.0.0.1"
+  },
+  "commande telephone": {
+   "n": 1,
+   "vu": "10-12 00:02:38",
+   "detail": "enregistrer"
+  }
+ },
+ "etapes": {
+  "2": {
+   "n": 64,
+   "vu": "10-12 00:55:11",
+   "cadre": 34,
+   "sans_cadre": 30
+  },
+  "3": {
+   "n": 43,
+   "vu": "10-12 00:58:08",
+   "cadre": 24,
+   "sans_cadre": 19
+  },
+  "1": {
+   "n": 47,
+   "vu": "10-12 01:00:06",
+   "cadre": 47,
+   "sans_cadre": 0
+  },
+  "4": {
+   "n": 43,
+   "vu": "10-12 00:24:05",
+   "cadre": 37,
+   "sans_cadre": 0
+  },
+  "5": {
+   "n": 50,
+   "vu": "10-12 00:25:19",
+   "cadre": 14,
+   "sans_cadre": 36
+  },
+  "6": {
+   "n": 36,
+   "vu": "10-12 00:24:51",
+   "cadre": 22,
+   "sans_cadre": 14
+  },
+  "7": {
+   "n": 32,
+   "vu": "10-12 00:25:19",
+   "cadre": 32,
+   "sans_cadre": 0
+  }
+ },
+ "resultats": {
+  "Rune Prospe": {
+   "n": 28,
+   "vu": "10-11 23:56:14",
+   "liste": [
+    "rune prospe",
+    "rune pa prospe",
+    "rune ré per neutre",
+    "rune tac",
+    "rune pa tac",
+    "rune ret pme",
+    "rune ré cri",
+    "rune pa ré cri",
+    "rune pui"
+   ]
+  },
+  "Rune Pa Prospe": {
+   "n": 54,
+   "vu": "10-11 23:39:37",
+   "liste": [
+    "rune pa prospe",
+    "rune ré per neutre",
+    "rune tac",
+    "rune pa tac",
+    "rune ret pme",
+    "rune ré cri",
+    "rune pa ré cri",
+    "rune pui"
+   ]
+  },
+  "Runel PaProspe": {
+   "n": 1,
+   "vu": "10-11 23:33:19",
+   "liste": [
+    "rune pa prospe",
+    "rune ré per neutre",
+    "rune tac",
+    "rune pa tac",
+    "rune ret pme",
+    "rune ré cri",
+    "rune pa ré cri",
+    "rune pui"
+   ]
+  },
+  "Rune Pa  Prospe": {
+   "n": 26,
+   "vu": "10-11 23:34:03",
+   "liste": [
+    "rune pa prospe",
+    "rune ré per neutre",
+    "rune tac",
+    "rune pa tac",
+    "rune ret pme",
+    "rune ré cri",
+    "rune pa ré cri",
+    "rune pui"
+   ]
+  },
+  "Rune Re Per Neutre": {
+   "n": 30,
+   "vu": "10-11 23:48:02",
+   "liste": [
+    "rune ré per neutre",
+    "rune tac",
+    "rune pa tac",
+    "rune ret pme",
+    "rune ré cri",
+    "rune pa ré cri",
+    "rune pui"
+   ]
+  },
+  "Rune Pa Tac": {
+   "n": 1,
+   "vu": "10-11 23:53:36",
+   "liste": [
+    "rune ré per neutre",
+    "rune tac",
+    "rune pa tac",
+    "rune ret pme",
+    "rune ré cri",
+    "rune pa ré cri",
+    "rune pui"
+   ]
+  },
+  "Rune vi": {
+   "n": 23,
+   "vu": "10-12 00:24:24",
+   "liste": [
+    "rune vi",
+    "rune do"
+   ]
+  },
+  "Rune Do Terre | Rune Do Ren": {
+   "n": 1,
+   "vu": "10-12 00:14:15",
+   "liste": [
+    "rune vi",
+    "rune do"
+   ]
+  },
+  "Rune Do Terre | Rune Do Ren | Rune Do Pou": {
+   "n": 2,
+   "vu": "10-12 00:14:22",
+   "liste": [
+    "rune vi",
+    "rune do"
+   ]
+  },
+  "Rune Do Terre | Rune Do Ren | Rune Do Pou | Rune Do Per So": {
+   "n": 1,
+   "vu": "10-12 00:14:24",
+   "liste": [
+    "rune vi",
+    "rune do"
+   ]
+  },
+  "Rune Do Terre | Rune Do Ren | Rune Do Pou | Rune Do Per So | Rune Do Per Me": {
+   "n": 1,
+   "vu": "10-12 00:14:29",
+   "liste": [
+    "rune vi",
+    "rune do"
+   ]
+  },
+  "Rune Do Terre | Rune Do Ren | Rune Do Pou | Rune Do Per So | Rune Do Per Me | Rune Do Peri Di": {
+   "n": 1,
+   "vu": "10-12 00:14:31",
+   "liste": [
+    "rune vi",
+    "rune do"
+   ]
+  },
+  "Rune Do Terre | Rune Do Ren | Rune Do Pou | Rune Do Per So | Rune Do Per Me | Rune Do Peri Di | Rune Do Per Ar": {
+   "n": 3,
+   "vu": "10-12 00:15:53",
+   "liste": [
+    "rune vi",
+    "rune do"
+   ]
+  },
+  "Rune Do | Rune Do Air | Rune Do Pou | Rune Do Per Ar | Rune Do Peri Di": {
+   "n": 1,
+   "vu": "10-12 00:15:57",
+   "liste": [
+    "rune vi",
+    "rune do"
+   ]
+  },
+  "Rune Do | Rune Do Air | Rune Do cri | Rune Do Pou | Rune Do Feu | Rune Do Per Ar | Rune Do Peri Di": {
+   "n": 1,
+   "vu": "10-12 00:16:35",
+   "liste": [
+    "rune vi",
+    "rune do"
+   ]
+  },
+  "Rune Do | Rune Do Air": {
+   "n": 1,
+   "vu": "10-12 00:24:26",
+   "liste": [
+    "rune vi",
+    "rune do"
+   ]
+  },
+  "Rune Do | Rune Do Air | Rune Do cri | Rune Do Eau": {
+   "n": 1,
+   "vu": "10-12 00:24:44",
+   "liste": [
+    "rune vi",
+    "rune do"
+   ]
+  }
+ },
+ "parcours": {
+  "pause (jeu couvert)": {
+   "n": 112,
+   "vu": "10-12 01:00:06"
+  },
+  "termine": {
+   "n": 15,
+   "vu": "10-12 00:25:21"
+  },
+  "à vérifier": {
+   "n": 13,
+   "vu": "10-12 00:19:21"
+  },
+  "liste à vérifier": {
+   "n": 12,
+   "vu": "10-12 00:19:21",
+   "detail": "Vitalité, Dommages"
+  },
+  "OK": {
+   "n": 2,
+   "vu": "10-12 00:25:21"
+  },
+  "liste OK": {
+   "n": 1,
+   "vu": "10-12 00:25:21",
+   "detail": "Vitalité, Dommages"
+  }
+ },
+ "hdv": {
+  "nombre douteux relu par le moteur": {
+   "n": 24,
+   "vu": "10-12 00:24:28",
+   "detail": "1361 / 30113"
+  },
+  "nom complété par la liste": {
+   "n": 3,
+   "vu": "10-11 23:39:37",
+   "detail": "Rune Prospe -> rune pa prospe (101 px)"
+  },
+  "nom rejeté (largeur incohérente)": {
+   "n": 12,
+   "vu": "10-12 00:15:53",
+   "detail": "Rune Pi / 70 px"
+  }
+ },
+ "fiches": {
+  "Puissante Ceinture Fulgurante": {
+   "n": 1,
+   "vu": "10-11 22:55:32",
+   "dans_liste": 0,
+   "moyen": 77944,
+   "lots": {
+    "1": 11711171717
+   },
+   "qte": 3,
+   "liste": [
+    "rune pa prospe",
+    "rune ré per neutre",
+    "rune tac",
+    "rune pa tac",
+    "rune ret pme",
+    "rune pa ret pme",
+    "rune ré cri",
+    "rune pa ré cri",
+    "rune pui"
+   ]
+  },
+  "Rune Pa Prospe": {
+   "n": 16,
+   "vu": "10-11 23:44:56",
+   "dans_liste": 16,
+   "moyen": 1272,
+   "lots": {
+    "1": 1313,
+    "10": 13388,
+    "100": 140437,
+    "1000": 1328997
+   },
+   "qte": 122,
+   "liste": [
+    "rune pa prospe",
+    "rune ré per neutre",
+    "rune tac",
+    "rune pa tac",
+    "rune ret pme",
+    "rune ré cri",
+    "rune pa ré cri",
+    "rune pui"
+   ]
+  },
+  "Rune Do Per So": {
+   "n": 1,
+   "vu": "10-11 23:07:09",
+   "dans_liste": 0,
+   "moyen": 24095,
+   "lots": {
+    "1": 34928,
+    "10": 399963,
+    "100": 10000014,
+    "1000": 37999999
+   },
+   "qte": 552,
+   "liste": [
+    "rune pa prospe",
+    "rune ré per neutre",
+    "rune tac",
+    "rune pa tac",
+    "rune ret pme",
+    "rune pa ret pme",
+    "rune ré cri",
+    "rune pa ré cri",
+    "rune pui"
+   ]
+  },
+  "Rune Re Per Neutre": {
+   "n": 3,
+   "vu": "10-11 23:52:00",
+   "dans_liste": 3,
+   "moyen": 1433,
+   "lots": {
+    "1": 1192,
+    "10": 13399,
+    "100": 119884,
+    "1000": 1191699
+   },
+   "qte": 200,
+   "liste": [
+    "rune ré per neutre",
+    "rune tac",
+    "rune pa tac",
+    "rune ret pme",
+    "rune ré cri",
+    "rune pa ré cri",
+    "rune pui"
+   ]
+  },
+  "Rune Prospe": {
+   "n": 8,
+   "vu": "10-11 23:57:02",
+   "dans_liste": 8,
+   "moyen": 380,
+   "lots": {
+    "1": 387,
+    "10": 4397,
+    "100": 47971,
+    "1000": 469979
+   },
+   "qte": 0,
+   "liste": [
+    "rune prospe",
+    "rune pa prospe",
+    "rune ré per neutre",
+    "rune tac",
+    "rune pa tac",
+    "rune ret pme",
+    "rune ré cri",
+    "rune pa ré cri",
+    "rune pui"
+   ]
+  },
+  "Rune Vi": {
+   "n": 26,
+   "vu": "10-12 00:24:21",
+   "dans_liste": 26,
+   "moyen": 208,
+   "lots": {
+    "1": 336,
+    "10": 2375,
+    "100": 23849,
+    "1000": 234977
+   },
+   "qte": 30,
+   "liste": [
+    "rune vi",
+    "rune do"
+   ]
+  },
+  "Rune Vie": {
+   "n": 4,
+   "vu": "10-12 00:12:01",
+   "dans_liste": 0,
+   "moyen": 208,
+   "lots": {
+    "1": 336,
+    "10": 2296,
+    "100": 23849,
+    "1000": 234977
+   },
+   "qte": 0,
+   "liste": [
+    "rune vi",
+    "rune do"
+   ]
+  },
+  "Rune Do Ren": {
+   "n": 3,
+   "vu": "10-12 00:14:35",
+   "dans_liste": 0,
+   "moyen": 347,
+   "lots": {
+    "1": 350,
+    "10": 3447,
+    "100": 34985,
+    "1000": 499897
+   },
+   "qte": 0,
+   "liste": [
+    "rune vi",
+    "rune do"
+   ]
+  },
+  "Rune Do": {
+   "n": 6,
+   "vu": "10-12 00:24:41",
+   "dans_liste": 6,
+   "moyen": 1361,
+   "lots": {
+    "1": 1217,
+    "10": 12772,
+    "100": 130998,
+    "1000": 1499993
+   },
+   "qte": 40,
+   "liste": [
+    "rune vi",
+    "rune do"
+   ]
+  }
+ },
+ "achats": {
+  "Rune Pa Prospe x100": {
+   "n": 2,
+   "vu": "10-11 23:22:27",
+   "prix": 1404,
+   "prix_lot": 140436,
+   "sens": "unitaire + total cohérents",
+   "lu": 2,
+   "conseil": "TROP CHER (1404.0 k la rune, max 1300.0) : annule"
+  },
+  "Rune Prospe x100": {
+   "n": 2,
+   "vu": "10-11 23:56:44",
+   "prix": 480,
+   "prix_lot": 47971,
+   "sens": "unitaire + total cohérents",
+   "lu": 2,
+   "conseil": "TROP CHER (480.0 k la rune, max 400.0) : annule"
+  },
+  "Rune Vi x100": {
+   "n": 1,
+   "vu": "10-11 23:58:59",
+   "prix": 238,
+   "prix_lot": 23849,
+   "sens": "unitaire + total cohérents",
+   "lu": 1,
+   "conseil": "TROP CHER (238.0 k la rune, max 210.0) : annule"
+  },
+  "Rune Vi x10": {
+   "n": 3,
+   "vu": "10-12 00:12:16",
+   "prix": 230,
+   "prix_lot": 2296,
+   "sens": "unitaire + total cohérents",
+   "lu": 3,
+   "conseil": "OK (230.0 k la rune, max 249.6) : confirme"
+  }
+ }
+}

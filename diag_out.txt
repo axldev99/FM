@@ -1,0 +1,17 @@
+nom de stat non reconnu : ''
+lecture en 24.23s (rapid), 13 lignes vues
+  vi           301  350  374  base/pa/ra  Vitalité
+  int           41   60   60  base/pa/ra  Intelligence
+  agi           31   40   40  base/pa/ra  Agilité
+  sa            31   40   37  base/pa/ra  Sagesse
+  cri            3    4    4  base        Critique
+  invo           1    1    1  base        Invocation
+  do_feu         8   12   12  base/pa     Dommages Feu
+  pp             7   10    0  base/pa     Prospection
+  re_per_terre   5    7    7  base        Résistance Terre
+  re_per_feu     5    7    7  base        Résistance  Feu
+  re_air         7   10   10  base/pa     Resistances Air
+  tacle          4    6    0  base/pa     Tacle
+  reliquat : 0.0
+>> REMONTE Pa Prospection +3
+image annotee : fm_lecture_debug_debug.png
