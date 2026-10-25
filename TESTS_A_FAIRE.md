@@ -1,5 +1,9 @@
 # Tests à faire (mode automatique F1, patch de clics)
 
+## Installation du testeur : Python 3.15 selectionne au lieu de 3.13
+
+La capture du testeur montre Python 3.15.1 64 bits et un echec de resolution d'onnxruntime. Le lanceur essaie maintenant `py -3.13`, puis uniquement un `python` qui passe le controle Python 3.13 / 64 bits. Aucun lancement avec Python 3.15 ni 32 bits. Installer Python 3.13 64 bits puis installer les bibliotheques avec CE Python : `py -3.13 -m pip install opencv-python numpy mss pillow rapidocr-onnxruntime`. Reprendre le lanceur mis a jour depuis Git. Ne pas utiliser le bouton d'installation du gestionnaire pour supposer que la version 3.13 a ete selectionnee ; verifier `py -3.13 --version`.
+
 ## Reprise apres modification volontaire du profil (25 octobre 2026)
 
 Retest 16:10-16:11 : bug reproduit avec les vraies fonctions `_conf` et `_mode_change` du programme genere. Le profil enregistre contient mode=manuel, puis F1 mute la configuration courante en mode=automatique. Les quatre gardes de file comparaient ces configurations brutes et refusaient a tort la reprise. La comparaison ignore maintenant UNIQUEMENT la cle de controle `mode` ; les cibles, exos, minima, plages et autres objectifs restent compares strictement. Le banc de test de file utilise desormais ces vraies fonctions d'interface au lieu d'un faux `_conf` sans mode.
