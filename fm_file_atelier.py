@@ -19,6 +19,12 @@ class FileIncertaine(RuntimeError):
     pass
 
 
+def configurations_identiques(gauche,droite):
+    """Le mode d'execution change avec F1/Echap, sans modifier les objectifs."""
+    if not isinstance(gauche,dict) or not isinstance(droite,dict):return False
+    return {k:v for k,v in gauche.items() if k!='mode'} == {k:v for k,v in droite.items() if k!='mode'}
+
+
 def empreinte(lignes):
     # "occulte" concerne aussi la couleur/le stock de la case sous la souris.
     # Une valeur et ses bornes reellement relues restent utilisables. "rate"

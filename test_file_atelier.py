@@ -9,7 +9,7 @@ from unittest import mock
 
 import activer_clics
 from fm_demarrage import DemarrageAtelier
-from fm_file_atelier import JournalFile,FileIncertaine,empreinte,correspond,minimums,exo_protege
+from fm_file_atelier import JournalFile,FileIncertaine,empreinte,correspond,minimums,exo_protege,configurations_identiques
 
 ROOT=Path(__file__).parent
 
@@ -149,10 +149,20 @@ class FileAtelierTests(unittest.TestCase):
 
     def runtime(self,j):
         traces=[];modes=['automatique'];nom=[''];clock=[100.]
+        # Vraies fonctions de configuration du programme genere : le mode
+        # manuel/automatique est ajoute par _conf et mute par _mode_change.
+        arbre=ast.parse((ROOT/'fm_avec_clics.py').read_text(encoding='utf8'))
+        cls=next(n for n in arbre.body if isinstance(n,ast.ClassDef) and n.name=='Panneau')
+        methodes=[n for n in cls.body if isinstance(n,ast.FunctionDef) and n.name in ('_conf','_conf_base','_mode_change')]
+        config={}
+        module=ast.Module(body=[ast.ClassDef(name='Panneau',bases=[],keywords=[],body=methodes,decorator_list=[])],type_ignores=[])
+        exec(compile(ast.fix_missing_locations(module),'configuration_reelle','exec'),config)
+        classe=config['Panneau']
         p=SimpleNamespace(journal_file=j,items=[self.a,self.b],file=[],rev=0,stock_exos={},
             mode=SimpleNamespace(get=lambda:modes[0],set=lambda v:modes.__setitem__(0,v)),
-            nom=SimpleNamespace(get=lambda:nom[0]),_mode_change=lambda:None,_conf=lambda f:f)
-        def charger(f):nom[0]=f['nom'];p.conf=f
+            nom=SimpleNamespace(get=lambda:nom[0]),_conf=classe._conf)
+        p._mode_change=lambda:classe._mode_change(p)
+        def charger(f):nom[0]=f['nom'];p.conf=p._conf(f)
         p.charger_preselection=charger
         ns=dict(panneau=p,SUIVI=SimpleNamespace(),time=SimpleNamespace(time=lambda:clock[0],monotonic=lambda:clock[0]),
             diagnostic=SimpleNamespace(evenement=lambda *a,**kw:traces.append((a,kw))),log=lambda _:None,
@@ -388,10 +398,65 @@ class FileAtelierTests(unittest.TestCase):
         tour(jet());ns['demarrage'].phase='PRET'
         tour(jet());tour(jet())
         nouveau=copy.deepcopy(self.a);nouveau['petit_exo']=None
-        ns['panneau'].conf=nouveau
+        ns['panneau'].conf=ns['panneau']._conf(nouveau)
         tour(jet())
         self.assertEqual(modes,['manuel'])
         self.assertEqual(j.active['profil'],ancien)
+
+    def test_vrai_mode_interface_f1_ne_change_pas_les_objectifs(self):
+        p=copy.deepcopy(self.a);p['mode']='manuel'
+        j=JournalFile(self.path);j.commencer(p,jet())
+        ns,tour,clock,modes,traces=self.runtime(j)
+        tour(jet());ns['demarrage'].phase='PRET'
+        tour(jet());tour(jet())
+        panneau=ns['panneau']
+        self.assertEqual(panneau._conf(p)['mode'],'manuel')
+        self.assertEqual(panneau.conf['mode'],'automatique')
+        self.assertTrue(configurations_identiques(panneau.conf,panneau._conf(p)))
+        ns['reco']={'stat':'fo','taille':'base'}
+        self.assertTrue(ns['autoriser_file']())
+        j.observer(jet())
+        # Echap puis F1 : appeler les vraies fonctions de mutation du mode.
+        panneau.mode.set('manuel');panneau._mode_change()
+        panneau.mode.set('automatique');panneau._mode_change()
+        self.assertTrue(ns['autoriser_file']())
+        j.observer(jet(pa=1))
+        tour(jet(pa=1));self.assertFalse(ns['confirmer_fin_file']({'texte':'OBJECTIF ATTEINT'}))
+        tour(jet(pa=1));self.assertTrue(ns['confirmer_fin_file']({'texte':'OBJECTIF ATTEINT'}))
+        self.assertEqual(modes,['automatique'])
+
+    def test_vrai_mode_interface_reprise_save_manuel_puis_f1(self):
+        p=copy.deepcopy(self.a);p['mode']='manuel';p['petit_exo']='agi'
+        j=JournalFile(self.path);j.commencer(p,jet())
+        ns,tour,clock,modes,traces=self.runtime(j)
+        panneau=ns['panneau']
+        nouveau=copy.deepcopy(p);nouveau['petit_exo']=None
+        panneau.charger_preselection(nouveau)
+        panneau.reconciliation_file={'id':123,'profil':nouveau}
+        panneau.mode.set('automatique');panneau._mode_change()
+        ns['confirmation']=SimpleNamespace(attente=None)
+        ns['confirmation_navigation']=SimpleNamespace(attente=None)
+        tour(jet());tour(jet())
+        self.assertEqual(j.active['profil']['petit_exo'],None)
+        self.assertEqual(modes,['automatique'])
+        self.assertIsNone(panneau.reconciliation_file)
+
+    def test_item_different_ne_declenche_aucune_fermeture_sans_save(self):
+        j=JournalFile(self.path);j.commencer(self.a,jet())
+        ns,tour,clock,modes,traces=self.runtime(j)
+        ns['panneau'].charger_preselection(self.b)
+        self.assertTrue(tour(jet(stat='int')))
+        self.assertEqual(modes,['manuel'])
+        self.assertFalse(any(t[0]=='clic' for t in traces))
+        self.assertFalse(ns['navigation_autorisee_file']())
+        self.assertEqual(j.active['profil'],self.a)
+
+    def test_comparaison_mode_ignore_mais_objectifs_reels_restent_verrouilles(self):
+        a={'mode':'manuel','exos':{'pa':1},'cibles':{'fo':48}}
+        b=dict(a,mode='automatique')
+        self.assertTrue(configurations_identiques(a,b))
+        for changement in ({'exos':{'pm':1}},{'cibles':{'fo':49}},{'petit_exo':'agi'}):
+            self.assertFalse(configurations_identiques(a,dict(b,**changement)))
 
     def test_enregistrer_demande_la_reprise_seulement_apres_sauvegarde_reussie(self):
         import os,time

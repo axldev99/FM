@@ -5300,6 +5300,8 @@ def mode_direct(ecran, ocr, histo):
             return False
         if fm and getattr(panneau,'journal_file',None) is not None and not autoriser_file():
             return False
+        if not fm and getattr(panneau,'journal_file',None) is not None and not navigation_autorisee_file():
+            return False
         motif = motif_blocage(
             automatique=panneau.mode.get() == "automatique",
             dofus_actif=dofus_actif(),
@@ -6679,6 +6681,10 @@ def mode_direct(ecran, ocr, histo):
     def preparer_demarrage(image, lecture, capture):
         securite["preparation"] = False
         verifier_mode_clic()
+        # F1 peut arriver entre le garde de file de la boucle et cet appel.
+        # Revalider apres la touche avant de naviguer ou fermer l'atelier.
+        if getattr(panneau,'journal_file',None) is not None and preparer_file(image,lecture,capture):
+            return True
         if panneau.mode.get() != "automatique":
             demarrage.mode_precedent = 'manuel'
             return False
@@ -6848,7 +6854,7 @@ def mode_direct(ecran, ocr, histo):
         message_demarrage(COMMANDE + " envoye ; popup facultatif, attente de l'arrivee")
         return True
 
-    from fm_file_atelier import empreinte, correspond, minimums, exo_protege, lecture_complete, FileIncertaine
+    from fm_file_atelier import empreinte, correspond, minimums, exo_protege, lecture_complete, configurations_identiques, FileIncertaine
     file_runtime = {'profil':None,'valide':None,'preuve':None,'n':0,'capture':-1.,'fermer':False,'absences':0}
 
     def bloquer_file(motif):
@@ -6912,7 +6918,7 @@ def mode_direct(ecran, ocr, histo):
                     return True
                 if not 0<=time.monotonic()-capture<=2:return True
                 profil_reprise=reprise['profil']
-                if panneau.nom.get().strip()!=profil_reprise['nom'] or panneau.conf!=panneau._conf(profil_reprise):
+                if panneau.nom.get().strip()!=profil_reprise['nom'] or not configurations_identiques(panneau.conf,panneau._conf(profil_reprise)):
                     raise FileIncertaine('selection modifiee depuis Enregistrer : enregistre le profil voulu a nouveau')
                 preuve=(reprise['id'],a['id'],empreinte(lecture['lignes']))
                 if capture<=file_runtime.get('reprise_capture',-1):return True
@@ -6932,6 +6938,8 @@ def mode_direct(ecran, ocr, histo):
                 log('FILE : profil et objet en cours reconcilies apres Enregistrer')
             elif reprise:
                 panneau.reconciliation_file=None
+            if a and lecture_complete(lecture) and not correspond(a['profil'],lecture['lignes']):
+                raise FileIncertaine('objet pose different de la tache en cours ; choisis son profil puis Enregistrer, aucun objet ne sera ferme automatiquement')
             attentes=j.attentes
             t=a or (attentes[0] if attentes else None)
             if t and file_runtime['profil']!=t['id']:
@@ -6985,7 +6993,7 @@ def mode_direct(ecran, ocr, histo):
                 bloquer_file('objet deja reussi/protege : aucune rune ne sera envoyee')
                 return True
             if a and file_runtime['valide']==a['id']:
-                if panneau.conf!=panneau._conf(a['profil']):
+                if not configurations_identiques(panneau.conf,panneau._conf(a['profil'])):
                     raise FileIncertaine('objectifs modifies : clique Enregistrer puis F1 pour verifier l objet et mettre a jour la tache')
                 return False
             jet=empreinte(lignes)
@@ -7023,10 +7031,24 @@ def mode_direct(ecran, ocr, histo):
                 return False
             if panneau.nom.get().strip()!=a['profil']['nom']:
                 raise FileIncertaine('profil modifie pendant une tache en cours')
-            if panneau.conf!=panneau._conf(a['profil']):
+            if not configurations_identiques(panneau.conf,panneau._conf(a['profil'])):
                 raise FileIncertaine('objectifs differents : clique Enregistrer puis F1 pour reconcilier la tache')
             # L'intention precede le clic. Apres un crash, aucune reemission aveugle.
             j.observer(lignes,action={'stat':reco.get('stat'),'taille':reco.get('taille')})
+            return True
+        except Exception as err:
+            bloquer_file(str(err))
+            return False
+
+    def navigation_autorisee_file():
+        # Un F1 peut survenir dans un sous-appel, apres le garde de la boucle.
+        # Ne pas fermer un objet different pendant une reconciliation en attente.
+        if getattr(panneau,'reconciliation_file',None):return False
+        try:
+            a=panneau.journal_file.active
+            if a and lecture_complete(etat) and not correspond(a['profil'],etat['lignes']):
+                bloquer_file('objet different de la tache active : navigation refusee avant confirmation du profil')
+                return False
             return True
         except Exception as err:
             bloquer_file(str(err))
@@ -7054,7 +7076,7 @@ def mode_direct(ecran, ocr, histo):
             j=panneau.journal_file
             a=j.active
             if not a:return False
-            if panneau.nom.get().strip()!=a['profil']['nom'] or panneau.conf!=panneau._conf(a['profil']):
+            if panneau.nom.get().strip()!=a['profil']['nom'] or not configurations_identiques(panneau.conf,panneau._conf(a['profil'])):
                 raise FileIncertaine('profil de fin different de la tache')
             if time.monotonic()-t_capture>2:return False
             lignes=(etat or {}).get('lignes',{})

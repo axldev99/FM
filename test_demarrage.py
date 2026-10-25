@@ -9,6 +9,17 @@ from fm_demarrage import (DemarrageAtelier, DESTINATION, COMMANDE,
 
 
 class DemarrageTests(unittest.TestCase):
+    def test_f1_tardif_ne_contourne_pas_le_garde_file_avant_fermeture(self):
+        ns,tour,actions,modes,_,_,_=self.contexte()
+        modes[0]='manuel'
+        ns['panneau'].journal_file=object()
+        ns['verifier_mode_clic']=lambda:modes.__setitem__(0,'automatique')
+        gardes=[]
+        ns['preparer_file']=lambda *a:gardes.append(True) or True
+        self.assertTrue(tour())
+        self.assertEqual(gardes,[True])
+        self.assertEqual(actions,[])
+
     def test_preselection_hors_atelier_charge_toutes_lignes_sans_modifier_profil(self):
         import copy
         class Case:
