@@ -1,0 +1,31 @@
+# Fichiers generes et diagnostics locaux
+__pycache__/
+*.py[cod]
+fm_debug_clics/
+fm_douteux/
+fm_parcours/
+fm_diagnostic/
+fm_log.txt
+fm_telephone.txt
+fm_run.txt
+fm_achats.txt
+fm_ravitaillements.txt
+fm_bilan.json
+fm_bilan.txt
+fm_capture_debug.png
+fm_lecture_debug.png
+fm_reliquat_debug.png
+fm_fige_debug.png
+fm_demarrage_saisie.png
+diag_*.png
+
+# Etat personnel de l'assistant (ne pas publier ni reinitialiser)
+fm_file.json
+fm_file_suivi.json
+fm_items*.json
+fm_stock.json
+fm_historique.json
+fm_noms_hdv.json
+fm_noms_reels.json
+fm_dofusdb.json
+fm_chiffres_avant_*.npz

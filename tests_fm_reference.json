@@ -1,0 +1,94 @@
+{
+  "description": "Comportement observe le 15 octobre 2026. Caracterisation du code, pas validation des mecaniques Dofus. Modifier ces attentes uniquement apres examen explicite du changement.",
+  "recommander_ast_sha256": "3be3321f68ad3caeb3abbc2087c9e2109a1330d52857b64f7bd801acf3898375",
+  "decisions": {
+    "remontee_simple": {
+      "stat": "fo",
+      "taille": "base",
+      "virtuel": false,
+      "texte": "REMONTE Force +1   SC 40% SN 50%"
+    },
+    "objectif_naturel_atteint": {
+      "texte": "OBJECTIF ATTEINT   | ni exo ni over sur l'item : tu peux le finir avec une rune de transcendance (100 % de réussite, mais elle verrouille l'item)"
+    },
+    "stock_epuise": {
+      "texte": "A ACHETER : runes Force"
+    },
+    "remise_pa_avec_puits": {
+      "stat": "pa",
+      "taille": "base",
+      "virtuel": false,
+      "texte": "REMETS PA +1   SC 40% SN 50%   | avec le puits de sa chute (100 de reliquat)"
+    },
+    "remise_pa_sans_puits": {
+      "stat": "pa",
+      "taille": "base",
+      "virtuel": false,
+      "texte": "REMETS PA +1   SC 40% SN 50%  perte utile ~10"
+    },
+    "exo_virtuel": {
+      "stat": "po",
+      "taille": "base",
+      "virtuel": true,
+      "texte": "EXO Portée +1   SC 1% SN 0%  perte utile ~20"
+    },
+    "gros_exo_pose_jet_incomplet": {
+      "texte": "OBJECTIF ATTEINT : Portée à 1 passé — ne touche plus à rien   | (sous l'objectif, on laisse : Force 5)"
+    },
+    "deuxieme_pourcent": {
+      "stat": "do_per_so",
+      "taille": "base",
+      "virtuel": false,
+      "texte": "EXO Do % sorts +1   SC 1% SN 0%  perte utile ~15"
+    },
+    "exo_atteint": {
+      "texte": "OBJECTIF ATTEINT : Do % sorts à 2 — ne touche plus à rien"
+    },
+    "bonus_over": {
+      "stat": "vi",
+      "taille": "ra",
+      "virtuel": false,
+      "texte": "BONUS dans le reliquat : Ra Vitalité +50   | Vitalité 440 (objectif 440 atteint), 10 de reliquat paie la rune ; un échec critique peut quand même entamer l'over"
+    },
+    "over_atteint_sans_puits": {
+      "texte": "OBJECTIF ATTEINT : Vitalité à 440 — ne touche plus à rien"
+    },
+    "malus": {
+      "stat": "ini",
+      "taille": "base",
+      "virtuel": false,
+      "texte": "MALUS Initiative +10 (demi-poids)   | Initiative -350 → objectif -301"
+    },
+    "petit_exo_avant_po": {
+      "stat": "agi",
+      "taille": "base",
+      "virtuel": true,
+      "petit_exo": true,
+      "texte": "PETIT EXO dans le reliquat : Agilité +1 avant le Portée   | 2 de reliquat paie l'échec   | rune pas encore apprise : bouton « Apprendre la rune » à côté de Petit exo"
+    },
+    "plan_b": {
+      "stat": "po",
+      "taille": "base",
+      "virtuel": true,
+      "texte": "PLAN B Portée +1   SC 1% SN 0%  perte utile ~51   | Vitalité restée à 360 (minimum 435)"
+    },
+    "over_parasite": {
+      "stat": "agi",
+      "taille": "base",
+      "virtuel": false,
+      "texte": "DANS L'OVER Agilité +1   SC 38% SN 47%   | payé par l'excédent de Force (25/20)"
+    },
+    "carburant_bas": {
+      "stat": "agi",
+      "taille": "base",
+      "virtuel": false,
+      "texte": "CARBURANT (ligne jetable basse) Agilité +1   SC 40% SN 50%  perte utile ~1"
+    },
+    "minimum_avant_exo": {
+      "stat": "po",
+      "taille": "base",
+      "virtuel": true,
+      "texte": "EXO Portée +1   SC 1% SN 0%  perte utile ~15"
+    }
+  }
+}

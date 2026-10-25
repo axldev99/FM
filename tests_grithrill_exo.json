@@ -1,0 +1,326 @@
+{
+  "conf": {
+    "nom": "Anneau en Grithrill EXO PA",
+    "nom_jeu": "Anneau en Grithrill",
+    "sig": [
+      [
+        "cha",
+        31,
+        50
+      ],
+      [
+        "cri",
+        2,
+        3
+      ],
+      [
+        "do_eau",
+        5,
+        8
+      ],
+      [
+        "do_neutre",
+        5,
+        8
+      ],
+      [
+        "do_terre",
+        5,
+        8
+      ],
+      [
+        "fo",
+        31,
+        50
+      ],
+      [
+        "re_cri",
+        11,
+        15
+      ],
+      [
+        "re_per_eau",
+        7,
+        10
+      ],
+      [
+        "sa",
+        31,
+        40
+      ],
+      [
+        "tacle",
+        5,
+        7
+      ],
+      [
+        "vi",
+        201,
+        250
+      ]
+    ],
+    "cibles": {
+      "vi": 240,
+      "fo": 48,
+      "cha": 0,
+      "sa": 32,
+      "cri": 3,
+      "do_neutre": 8,
+      "do_terre": 8,
+      "do_eau": 0,
+      "re_per_eau": 10,
+      "tacle": 5,
+      "re_cri": 13
+    },
+    "exos": {
+      "pa": 1
+    },
+    "regles": {
+      "vi": {
+        "pa": [
+          0,
+          235
+        ]
+      },
+      "fo": {
+        "pa": [
+          0,
+          47
+        ]
+      },
+      "cha": {
+        "pa": [
+          0,
+          47
+        ]
+      },
+      "sa": {
+        "pa": [
+          0,
+          37
+        ],
+        "ra": [
+          0,
+          30
+        ]
+      },
+      "do_neutre": {
+        "base": [
+          0,
+          4
+        ],
+        "pa": [
+          5,
+          5
+        ]
+      },
+      "do_terre": {
+        "base": [
+          0,
+          4
+        ],
+        "pa": [
+          5,
+          5
+        ]
+      },
+      "do_eau": {
+        "base": [
+          0,
+          4
+        ],
+        "pa": [
+          5,
+          5
+        ]
+      },
+      "tacle": {
+        "pa": [
+          0,
+          4
+        ]
+      },
+      "re_cri": {
+        "pa": [
+          0,
+          12
+        ]
+      }
+    },
+    "mins": {},
+    "remonte": {},
+    "plan_b": null,
+    "petit_exo": null,
+    "finition": null,
+    "mode": "manuel"
+  },
+  "etat": {
+    "tableau": true,
+    "reliquat": 1.5,
+    "confiance_ocr": null,
+    "lignes": {
+      "vi": {
+        "val": 244,
+        "min": 201,
+        "max": 250,
+        "dispo": [
+          "base",
+          "pa",
+          "ra"
+        ],
+        "stock": {
+          "pa": 568,
+          "ra": 457
+        },
+        "rate": 0,
+        "occulte": false
+      },
+      "fo": {
+        "val": 48,
+        "min": 31,
+        "max": 50,
+        "dispo": [
+          "base",
+          "pa",
+          "ra"
+        ],
+        "stock": {
+          "pa": 1001,
+          "ra": 122
+        },
+        "rate": 0,
+        "occulte": false
+      },
+      "cha": {
+        "val": 40,
+        "min": 31,
+        "max": 50,
+        "dispo": [
+          "base",
+          "pa",
+          "ra"
+        ],
+        "stock": {
+          "base": 672,
+          "pa": 977,
+          "ra": 96
+        },
+        "rate": 0,
+        "occulte": false
+      },
+      "sa": {
+        "val": 38,
+        "min": 31,
+        "max": 40,
+        "dispo": [
+          "base",
+          "pa",
+          "ra"
+        ],
+        "stock": {
+          "base": 917,
+          "pa": 350,
+          "ra": 341
+        },
+        "rate": 0,
+        "occulte": false
+      },
+      "cri": {
+        "val": 3,
+        "min": 2,
+        "max": 3,
+        "dispo": [
+          "base"
+        ],
+        "stock": {
+          "base": 225
+        },
+        "rate": 0,
+        "occulte": false
+      },
+      "do_neutre": {
+        "val": 8,
+        "min": 5,
+        "max": 8,
+        "dispo": [
+          "base",
+          "pa"
+        ],
+        "stock": {
+          "base": 242,
+          "pa": 44
+        },
+        "rate": 0,
+        "occulte": false
+      },
+      "do_terre": {
+        "val": 8,
+        "min": 5,
+        "max": 8,
+        "dispo": [
+          "base"
+        ],
+        "stock": {
+          "base": 113
+        },
+        "rate": 0,
+        "occulte": false
+      },
+      "do_eau": {
+        "val": 2,
+        "min": 5,
+        "max": 8,
+        "dispo": [
+          "base",
+          "pa"
+        ],
+        "stock": {
+          "base": 114
+        },
+        "rate": 0,
+        "occulte": false
+      },
+      "re_per_eau": {
+        "val": 10,
+        "min": 7,
+        "max": 10,
+        "dispo": [
+          "base"
+        ],
+        "stock": {
+          "base": 352
+        },
+        "rate": 0,
+        "occulte": false
+      },
+      "tacle": {
+        "val": 5,
+        "min": 5,
+        "max": 7,
+        "dispo": [
+          "base"
+        ],
+        "stock": {
+          "base": 327
+        },
+        "rate": 0,
+        "occulte": false
+      },
+      "re_cri": {
+        "val": 13,
+        "min": 11,
+        "max": 15,
+        "dispo": [
+          "base",
+          "pa"
+        ],
+        "stock": {
+          "base": 1526,
+          "pa": 11
+        },
+        "rate": 0,
+        "occulte": false
+      }
+    }
+  }
+}

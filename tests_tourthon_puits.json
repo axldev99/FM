@@ -1,0 +1,274 @@
+{
+  "conf": {
+    "nom": "Collier de Tourthon do so",
+    "nom_jeu": "Collier de Tourthon",
+    "sig": [
+      [
+        "do_neutre",
+        16,
+        20
+      ],
+      [
+        "do_terre",
+        16,
+        20
+      ],
+      [
+        "fo",
+        81,
+        100
+      ],
+      [
+        "pa",
+        1,
+        1
+      ],
+      [
+        "pp",
+        11,
+        15
+      ],
+      [
+        "re_per_air",
+        7,
+        10
+      ],
+      [
+        "sa",
+        41,
+        50
+      ],
+      [
+        "tacle",
+        11,
+        15
+      ],
+      [
+        "vi",
+        401,
+        500
+      ]
+    ],
+    "cibles": {
+      "vi": 487,
+      "fo": 97,
+      "sa": 48,
+      "pa": 1,
+      "do_neutre": 20,
+      "do_terre": 20,
+      "pp": 0,
+      "re_per_air": 10,
+      "tacle": 15
+    },
+    "exos": {
+      "do_per_so": 1
+    },
+    "regles": {
+      "vi": {
+        "pa": [
+          0,
+          299
+        ],
+        "ra": [
+          250,
+          450
+        ]
+      },
+      "fo": {
+        "pa": [
+          0,
+          49
+        ],
+        "ra": [
+          50,
+          90
+        ]
+      },
+      "sa": {
+        "pa": [
+          0,
+          47
+        ],
+        "ra": [
+          0,
+          40
+        ]
+      },
+      "do_neutre": {
+        "base": [
+          0,
+          16
+        ],
+        "pa": [
+          17,
+          17
+        ]
+      },
+      "do_terre": {
+        "base": [
+          0,
+          16
+        ],
+        "pa": [
+          17,
+          17
+        ]
+      },
+      "pp": {
+        "pa": [
+          0,
+          12
+        ]
+      },
+      "tacle": {
+        "pa": [
+          0,
+          12
+        ]
+      }
+    },
+    "mins": {
+      "vi": 480,
+      "fo": 92,
+      "sa": 45
+    },
+    "remonte": {},
+    "plan_b": null,
+    "petit_exo": null,
+    "finition": null,
+    "mode": "manuel"
+  },
+  "lignes": {
+    "vi": {
+      "val": 500,
+      "min": 401,
+      "max": 500,
+      "dispo": [
+        "base",
+        "pa",
+        "ra"
+      ],
+      "stock": {
+        "base": 206,
+        "pa": 644,
+        "ra": 565
+      },
+      "rate": 0,
+      "occulte": false
+    },
+    "fo": {
+      "val": 99,
+      "min": 81,
+      "max": 100,
+      "dispo": [
+        "base",
+        "pa",
+        "ra"
+      ],
+      "stock": {
+        "pa": 369,
+        "ra": 46
+      },
+      "rate": 0,
+      "occulte": false
+    },
+    "sa": {
+      "val": 48,
+      "min": 41,
+      "max": 50,
+      "dispo": [
+        "base",
+        "pa",
+        "ra"
+      ],
+      "stock": {
+        "base": 924,
+        "pa": 383,
+        "ra": 375
+      },
+      "rate": 0,
+      "occulte": false
+    },
+    "pa": {
+      "val": 0,
+      "min": 1,
+      "max": 1,
+      "dispo": [
+        "base"
+      ],
+      "stock": {
+        "base": 7
+      },
+      "rate": 0,
+      "occulte": true
+    },
+    "do_neutre": {
+      "val": 20,
+      "min": 16,
+      "max": 20,
+      "dispo": [
+        "base",
+        "pa"
+      ],
+      "stock": {
+        "base": 467
+      },
+      "rate": 0,
+      "occulte": true
+    },
+    "do_terre": {
+      "val": 20,
+      "min": 16,
+      "max": 20,
+      "dispo": [
+        "base",
+        "pa"
+      ],
+      "stock": {},
+      "rate": 0,
+      "occulte": true
+    },
+    "pp": {
+      "val": 4,
+      "min": 11,
+      "max": 15,
+      "dispo": [
+        "base",
+        "pa"
+      ],
+      "stock": {
+        "base": 320
+      },
+      "rate": 0,
+      "occulte": true
+    },
+    "re_per_air": {
+      "val": 10,
+      "min": 7,
+      "max": 10,
+      "dispo": [
+        "base"
+      ],
+      "stock": {
+        "base": 179
+      },
+      "rate": 0,
+      "occulte": true
+    },
+    "tacle": {
+      "val": 15,
+      "min": 11,
+      "max": 15,
+      "dispo": [
+        "base",
+        "pa"
+      ],
+      "stock": {
+        "base": 175
+      },
+      "rate": 0,
+      "occulte": true
+    }
+  },
+  "reliquat": 49.6
+}

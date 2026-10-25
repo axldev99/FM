@@ -60,7 +60,7 @@ UNITE = {"vi": 5, "ini": 10, "pods": 10}          # gain de la rune de base
 MULT = {"base": 1, "pa": 3, "ra": 10}
 # Tailles de runes qui existent dans le jeu, par stat (tout le reste : rune normale seulement)
 _EL = ("neutre", "terre", "feu", "eau", "air")
-AVEC_RA = {"vi", "ini", "pods", "fo", "int", "cha", "agi", "sa", "pui", "pui_pieges", "do_pou"} | \
+AVEC_RA = {"vi", "ini", "pods", "fo", "int", "cha", "agi", "sa", "pui", "pui_pieges", "do_pou", "re_pou"} | \
           {"re_" + e for e in _EL}
 AVEC_PA = AVEC_RA | {"pp", "tacle", "fuite", "do_cri", "do_pieges", "re_cri", "re_pou",
                      "ret_pa", "ret_pm", "esq_pa", "esq_pm"} | {"do_" + e for e in _EL}
@@ -68,12 +68,15 @@ AVEC_PA = AVEC_RA | {"pp", "tacle", "fuite", "do_cri", "do_pieges", "re_cri", "r
 
 def tailles(s):
     return ["base", "pa", "ra"] if s in AVEC_RA else ["base", "pa"] if s in AVEC_PA else ["base"]
+SEUIL_HORS_PALIER = .5                            # chance de passer (SC + SN) exigee d'une Pa hors palier
+OVER_TAMPON = 20                                  # poids d'over au-dela duquel une grosse rune passe mal
+SEUIL_PUITS = 10                                  # reliquat a partir duquel on FM « avec puits »
 SEUIL_ATTENTE = .30                               # sous cette chance de reussite, on prefere attendre
 SEUIL_RA = 60                                     # Fo/Int/Cha/Agi : au-dela de 60, seules les Ra passent bien
 CARBU_BAS, CARBU_HAUT = .20, .50                  # ligne jetable : on la remonte a partir de 20 % du max, jusqu'a 50 %
 _CYCLE = [False]                                  # True = on remonte le jet jusqu'a « Remonter a »
 _EN_REMONTEE = set()                              # lignes jetables en cours de remontee
-LOURD = 20                                        # puits a partir duquel une ligne est "lourde"
+LOURD = 20                                        # poids par point : Dommages, Invocation, PO, PM, PA
 PLAFOND = 101                                     # poids maximal d'une ligne (505 vita, 101 intel...)
 # A priori [SC, SN, EC] par situation, corriges ensuite par tes propres passes (fm_historique.json)
 
@@ -126,8 +129,14 @@ def code_stat(nom, pct):
             n = n[:m.start()]
             code = NOMS.get(n)
     if not code:
-        proche = difflib.get_close_matches(n, list(NOMS), n=1, cutoff=0.8)
-        code = NOMS[proche[0]] if proche else None
+        proches = difflib.get_close_matches(n, list(NOMS), n=6, cutoff=0.8)
+        if proches:
+            r0 = difflib.SequenceMatcher(None, n, proches[0]).ratio()
+            # « Résistance » tout court est aussi proche de Feu que d'Eau ou d'Air : nom incomplet, on ne
+            # devine pas (sinon la ligne Eau devient une 2e ligne Feu)
+            ambigu = any(NOMS[p_] != NOMS[proches[0]] and difflib.SequenceMatcher(None, n, p_).ratio() >= r0 - .04
+                         for p_ in proches[1:])
+            code = None if ambigu else NOMS[proches[0]]
     if code and pct and code.startswith("re_") and code[3:] in ELEMS:
         code = "re_per_" + code[3:]
     return code
@@ -191,6 +200,8 @@ def libelle_contexte(ctx):
 # observee les corrige.  Au-dela de son palier une rune ne passe presque plus (Pa Vi a 360 : jamais).
 _DEPART = [.90, .85, .70, .35, .10]
 _CONFIANCE = 12          # poids du point de depart, en nombre de passes
+POIDS_PERTE = .5         # importance des pertes face au gain dans le choix de la rune
+K_STAT = 40              # poids des taux de la situation face a ceux de la stat (en passes)
 
 
 def probas(histo, s, t, l):
@@ -211,7 +222,13 @@ def probas(histo, s, t, l):
     depart = [ok * part_sc * _CONFIANCE, ok * (1 - part_sc) * _CONFIANCE, (1 - ok) * _CONFIANCE]
     h = histo.get(ctx, [0, 0, 0])
     c = [a + b for a, b in zip(depart, h)]
-    return [x / sum(c) for x in c], sum(h)
+    p = [x / sum(c) for x in c]
+    # Chaque stat a ses propres taux dans une meme situation (tes passes : Pa Do critiques 44 % d'echecs
+    # critiques, Pa Agilite 7 %). On part des taux de la situation et on les corrige par ceux de la stat.
+    hs = histo.get(s + "|" + ctx)
+    if hs and sum(hs):
+        p = [(a + K_STAT * b) / (sum(hs) + K_STAT) for a, b in zip(hs, p)]
+    return p, sum(h)
 
 
 def histo_depuis_passes():
@@ -227,14 +244,61 @@ def histo_depuis_passes():
                     l = {"val": int(c[5]), "max": int(c[6])}
                 except ValueError:
                     continue
-                histo.setdefault(contexte(c[2], c[3], l), [0, 0, 0])[("SC", "SN", "EC").index(c[7])] += 1
+                ctx_ = contexte(c[2], c[3], l)
+                i_ = ("SC", "SN", "EC").index(c[7])
+                histo.setdefault(ctx_, [0, 0, 0])[i_] += 1
+                histo.setdefault(c[2] + "|" + ctx_, [0, 0, 0])[i_] += 1     # la meme situation, pour cette stat
     except OSError:
         pass
     return histo
 
 
+_ALGO = {"mtime": None, "vu": 0.0, "fn": None}
+
+
+def recommander_live(etat, conf, histo):
+    """recommander(), recharge a chaud : quand assistant_sans_clic.py change sur le disque (correctif deploye),
+    la nouvelle logique de conseil est prise au prochain conseil, sans relancer l'assistant. Seule la logique
+    de conseil est rechargee (pas la lecture d'ecran ni la fenetre). Si le nouveau fichier plante au
+    chargement, on garde l'ancienne version."""
+    import importlib.util
+    maintenant = time.time()
+    if maintenant - _ALGO["vu"] > 2:
+        _ALGO["vu"] = maintenant
+        try:
+            mt = os.path.getmtime(__file__)
+            if _ALGO["mtime"] is None:
+                _ALGO["mtime"] = mt
+            elif mt != _ALGO["mtime"]:
+                _ALGO["mtime"] = mt
+                spec = importlib.util.spec_from_file_location("fm_algo_live", __file__)
+                mod = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(mod)
+                # memes etats partages : runes apprises, cycle de remontee, carburant en cours
+                mod.RUNES_APPRISES, mod._CYCLE, mod._EN_REMONTEE = RUNES_APPRISES, _CYCLE, _EN_REMONTEE
+                _ALGO["fn"] = mod.recommander
+                log("Logique de conseil rechargée (nouvelle version du fichier)")
+        except Exception as e:
+            log(f"Rechargement de la logique impossible, on garde l'ancienne : {e!r}"[:300])
+    fn = _ALGO["fn"] or recommander
+    try:
+        return fn(etat, conf, histo)
+    except Exception as e:
+        if fn is recommander:
+            raise
+        log(f"Nouvelle logique en erreur, retour a l'ancienne : {e!r}"[:300])
+        return recommander(etat, conf, histo)
+
+
 def recommander(etat, conf, histo):
     """Retourne {stat, taille, texte} ou {texte} seulement."""
+    finition = conf.get("finition")
+    naturelles = etat["lignes"]
+    # Option explicite, seulement sur un jet naturel sans exo/over demande ou pose.
+    if finition not in naturelles or naturelles[finition]["max"] <= 0 \
+            or any(c > 0 for c in conf.get("exos", {}).values()) \
+            or any(c > naturelles.get(s, {}).get("max", 0) for s, c in conf.get("cibles", {}).items()):
+        finition = None
     L = {}
     for s, l in etat["lignes"].items():
         if l["max"] < 0 or l["val"] < 0 and l["max"] == 0:
@@ -251,26 +315,93 @@ def recommander(etat, conf, histo):
             L[s] = {"nom": nom_code(s), "min": 0, "max": 0, "val": 0, "cible": min(c, plafond(s)),
                     "dispo": ["base"], "virtuel": True}
     rel = etat["reliquat"] or 0.0
+    # Insister seulement apres une remise decidee d'Invo/PA/PM/PO.
+    remise = conf.get("_remise_lourde")
+    if remise in ("invo", "pa", "pm", "po"):
+        if remise not in L:
+            return {"texte": f"ATTENDS : {nom_code(remise)} non relu pendant sa remise", "stop": True}
+        l = L[remise]
+        if l["max"] > 0 and l["val"] < min(l["cible"], l["max"]):
+            if "base" not in l["dispo"]:
+                return {"texte": f"A ACHETER : {nom_rune(remise, 'base')} (remise de la ligne en cours)"}
+            (psc, psn, _), _n = probas(histo, remise, "base", l)
+            return {"stat": remise, "taille": "base", "virtuel": False,
+                    "texte": f"REMETS {nom_rune(remise, 'base')} +{qte(remise, 'base')}"
+                             f"   SC {psc:.0%} SN {psn:.0%}   | remise engagee : insister avant toute autre ligne"}
+    # Item a puits (gros reliquat, souvent apres des essais d'exo) ou item sans puits : deux facons de FM.
+    #  - avec puits : le reliquat paie les echecs. On remplit au plus juste, toutes tailles de rune, les
+    #    lignes lourdes d'abord (la facon qui marche sur les Psikopompe).
+    #  - sans puits : chaque echec coute des lignes. Grosses runes tot (un succes remonte le jet d'un coup),
+    #    jamais de rune hors de son palier, la ligne la plus basse dans son jet d'abord, over gere.
+    avec_puits = rel >= SEUIL_PUITS
 
     # Tous les exos demandes sont poses (ex. les 2 % dommages aux sorts) : on ne propose PLUS RIEN, quels
     # que soient le reliquat et l'etat du jet. Toute rune de plus pourrait piocher dans l'exo et le casser.
     # (un over voulu sur une ligne de l'item compte pareil : 6 % dommages aux sorts sur une ligne a 4 max)
+    # Le gros exo (PA, PM, PO...) est passe : l'item est fini. On ne tente plus RIEN d'autre (ni l'Ini du
+    # double exo, ni une ligne a remonter) : n'importe quelle rune ratee peut le faire tomber.
+    gros_poses = [x for x, c in conf.get("exos", {}).items() if c > 0 and POIDS.get(x, 0) >= LOURD
+                  and x in etat["lignes"] and L.get(x, {}).get("val", 0) >= min(c, L[x]["cible"])]
+    if gros_poses:
+        bas_ = [f"{l['nom']} {l['val']}" for x, l in L.items() if 0 < l["max"] and l["val"] < min(l["cible"], l["max"])]
+        return {"texte": "OBJECTIF ATTEINT : " + ", ".join(f"{L[x]['nom']} à {L[x]['val']}" for x in gros_poses)
+                + " passé — ne touche plus à rien"
+                + ("   | (sous l'objectif, on laisse : " + ", ".join(bas_) + ")" if bas_ else "")
+                + (f"   | {rel:g} de reliquat : il est perdu si tu équipes ou mets en vente l'item" if rel >= 1 else "")}
     voulus = [s for s, c in conf.get("exos", {}).items() if c > 0 and s in L] \
         + [s for s, l in L.items() if l["cible"] > l["max"] > 0 and s not in conf.get("exos", {})]
     # Exception : une ligne lourde du jet (PA, PM, PO, Invo, Dommages...) tombee sous son objectif. L'item n'est
     # pas fini sans elle : on ne s'arrete pas, la suite la remet (quitte a refaire l'over ensuite).
     lourdes_bas = [s for s, l in L.items() if l["max"] > 0 and POIDS.get(s, 0) >= LOURD
                    and l["val"] < min(l["cible"], l["max"])]
-    if voulus and not lourdes_bas and all(L[s]["val"] >= L[s]["cible"] > 0 for s in voulus) \
+    # Le premier % sorts peut passer en SN : sa presence seule ne valide pas
+    # le jet. Reprendre les lignes sous le minimum, sans finition facultative.
+    exo_leger_pose = conf.get("exos", {}).get("do_per_so") == 1 \
+        and L.get("do_per_so", {}).get("max", 1) <= 0 \
+        and L["do_per_so"]["val"] >= 1
+    jet_leger_incomplet = [s for s, l in L.items() if exo_leger_pose
+        and 0 < l["max"] and 0 < l["cible"] <= l["max"]
+        and l["val"] < min(conf.get("mins", {}).get(s, l["cible"]), l["cible"], l["max"])]
+    if voulus and not lourdes_bas and not jet_leger_incomplet and all(L[s]["val"] >= L[s]["cible"] > 0 for s in voulus) \
             and all(s in etat["lignes"] for s in voulus):
         bas = [f"{l['nom']} {l['val']} (min {conf['mins'][s]})" for s, l in L.items()
                if l["max"] > 0 and l["val"] < min(conf.get("mins", {}).get(s, 0), l["max"])]
+        # Bonus : il reste assez de reliquat pour payer la grosse rune d'un over (10 pour une Ra Vita) et
+        # elle tient sous le plafond (Vita 450 -> 500, plafond 505) : on la tente, le reliquat paie.
+        jet_ok = all(l["val"] >= min(conf.get("mins", {}).get(x, l["cible"]), l["cible"], l["max"])
+                     for x, l in L.items() if l["max"] > 0 and x not in voulus)
+        if jet_ok and not any(l["max"] <= 0 < l["val"] for l in L.values()):
+            for x in voulus:
+                # la plus grosse rune que le reliquat paie et qui tient sous le plafond (Ra Vita avec 10 et plus ;
+                # avec 5 de reliquat, Pa Vita ou Vita +5 pour l'epuiser)
+                g_ = next((t_ for t_ in reversed(tailles(x)) if t_ in L[x].get("dispo", ())
+                           and rel >= pds(x, qte(x, t_)) and L[x]["val"] + qte(x, t_) <= plafond(x, L[x]["max"])), None)
+                if g_ and 0 < L[x]["max"] < L[x]["cible"]:
+                    return {"stat": x, "taille": g_, "virtuel": False,
+                            "texte": f"BONUS dans le reliquat : {nom_rune(x, g_)} +{qte(x, g_)}   | "
+                                     f"{L[x]['nom']} {L[x]['val']} (objectif {L[x]['cible']} atteint), {rel:g} de "
+                                     f"reliquat paie la rune ; un échec critique peut quand même entamer l'over"}
         return {"texte": "OBJECTIF ATTEINT : " + ", ".join(f"{L[s]['nom']} à {L[s]['val']}" for s in voulus)
                 + " — ne touche plus à rien" + ("   | sous le minimum : " + ", ".join(bas) if bas else "")
                 + (f"   | {rel:g} de reliquat : il est perdu si tu équipes ou mets en vente l'item" if rel >= 1 else "")}
     # Ligne haute coincee entre la fin de sa plage Ra et son objectif (ex. Puissance a 113 pour 118,
     # Ra permise jusqu'a 110) : les petites runes n'y passent plus. On n'y touche pas, on continue de
     # runer les autres lignes pour qu'elle redescende dans la plage de la Ra.
+    exo_pose = any(l["max"] <= 0 and l["val"] > 0 and not l.get("virtuel") for l in L.values())
+
+    def deborde_ok(s, l):
+        """Ligne coincee entre sa derniere Ra et son objectif (Vita 362 pour 390, max 400) mais qui peut etre
+        over (plafond 505) : on passe la Ra quand meme (412) et on gere l'over, au lieu d'attendre qu'elle
+        redescende. Pas pour une ligne qui ne peut pas etre over (Puissance 80, 20 Dommages, 500 Vita)."""
+        g_ = tailles(s)[-1]
+        if g_ == "base" or exo_pose or not (0 < l["max"] < plafond(s, l["max"])):
+            return False
+        q_ = qte(s, g_)
+        if any(l["val"] < palier(s, t_) for t_ in tailles(s)[:-1]):
+            return False                # une rune plus petite passe encore bien (Ré cri 13/15 : +1, pas de Pa)
+        return l["max"] - q_ < l["val"] < min(l["cible"], l["max"]) and l["val"] + q_ <= plafond(s, l["max"]) \
+            and g_ in l.get("dispo", ())
+
     bloquees = {}
     for s, l in L.items():
         g = tailles(s)[-1]
@@ -278,7 +409,9 @@ def recommander(etat, conf, histo):
         if not plage or l["max"] <= 0:
             continue
         fin = min(plage[1], plafond(s, l["max"]) - qte(s, g))        # derniere valeur ou la grosse rune tient
-        if pds(s, l["val"]) >= SEUIL_RA and fin < l["val"] < l["cible"]:
+        autre = any(t != g and p_[0] <= l["val"] <= p_[1] and l["val"] + qte(s, t) <= plafond(s, l["max"])
+                    for t, p_ in conf.get("regles", {}).get(s, {}).items())   # la Pa prend le relais
+        if pds(s, l["val"]) >= SEUIL_RA and fin < l["val"] < l["cible"] and not autre and not deborde_ok(s, l):
             bloquees[s] = fin
     # Over a la grosse rune mal aligne : a 417 vita (max 400, plafond 505) une Ra mene a 467, la suivante
     # depasserait 505.  Il faut d'abord redescendre a 405 avec des runes a 1 de puits, puis 405 -> 455 -> 505.
@@ -288,11 +421,16 @@ def recommander(etat, conf, histo):
         if g == "base" or s in bloquees or not (0 < l["max"] < l["val"] < l["cible"]):
             continue
         q, haut = qte(s, g), plafond(s, l["max"])
-        but = conf.get("mins", {}).get(s, l["cible"])
+        # on aligne sur le plafond (Vita 355 -> 405 -> 455 -> 505), comme sur les Psikopompe : l'over voulu
+        # se finit puis le reliquat qui reste part en bonus jusqu'au plafond
+        but = haut
         n = int((haut - l["val"]) // q)                      # nombre de grosses runes qui rentrent encore
-        if l["val"] + q * n >= but:
-            continue                                         # on arrive au but sans rien toucher
+        obj_ = conf.get("mins", {}).get(s, l["cible"])
+        if l["val"] + q * n >= but - .4 * q or l["val"] + q >= obj_:   # (432 -> 482 : une Ra finit l'objectif)
+            continue        # on arrive au but (ou presque : 404 -> 454 -> 504, on ne redescend pas 49 vita pour 1)
         v = haut - q * (n + 1)
+        if l["val"] - v < .2 * q:
+            continue        # (356 pour 355 : on ne fait pas une descente pour 1 vita)
         if v >= l["max"] and v + q * (n + 1) >= but:
             bloquees[s] = v
             alignes[s] = n + 1
@@ -311,9 +449,31 @@ def recommander(etat, conf, histo):
             f"   | {L[s]['nom']} à {L[s]['val']} : la descendre à {v}, puis {alignes[s]} "
             f"{tailles(s)[-1].capitalize()} jusqu'à {v + alignes[s] * qte(s, tailles(s)[-1])}" if s in alignes else
             f"   | {L[s]['nom']} à {L[s]['val']} : la laisser redescendre à {v} pour la "
-            f"{tailles(s)[-1].capitalize()}" for s, v in tous.items())
+            f"{tailles(s)[-1].capitalize()}" for s, v in tous.items()
+            if s in alignes or L[s]["val"] < L[s].get("bas", L[s]["cible"]))   # ligne a son minimum : rien a dire
 
     attente = {}
+
+    def descente():
+        """Plus rien d'autre a monter, ou un over a realigner (Vita 380 -> 355, puis 405, 455, 505) : la plus
+        petite rune jouable ailleurs, juste pour faire des pertes (Force ou Agilite +1, 1 de puits)."""
+        petites = [((x in ("vi", "ini", "pods"), pds(x, qte(x, "base"))), x) for x, y in L.items()
+                   if x not in bloquees and x not in attente and "base" in y["dispo"] and y["max"] > 0
+                   and not (exo_leger_pose and (y["cible"] <= 0 or y["val"] >=
+                       min(conf.get("mins", {}).get(x, y["cible"]), y["cible"], y["max"])))
+                   and not (exo_leger_pose and (y["cible"] <= 0 or y["val"] >=
+                       min(conf.get("mins", {}).get(x, y["cible"]), y["cible"], y["max"])))
+                   and (pds(x, qte(x, "base")) <= 1 or not inutile(x, "base", y["val"], y["max"]))
+                   and y["val"] + qte(x, "base") <= plafond(x, y["max"])]
+        if petites and (min(petites)[0][1] <= 2 or not alignes):
+            x = min(petites)[1]
+            return {"stat": x, "taille": "base", "virtuel": False,
+                    "texte": f"DESCENTE {L[x]['nom']} +{qte(x, 'base')}{note_blocage()}"}
+        if alignes:                                # aucune petite rune sur l'item : une rune a 1 de puits en exo
+            x = next((c for c in CARAC if c not in L), "ini")
+            return {"stat": x, "taille": "base", "virtuel": True,
+                    "texte": f"DESCENTE {nom_code(x)} +{qte(x, 'base')} (exo à 1 de puits){note_blocage()}"}
+        return None
 
     def coince(s, l, v):
         """Si, a la valeur v, la ligne est sous son objectif, trop haute pour sa grosse rune et que les
@@ -339,12 +499,20 @@ def recommander(etat, conf, histo):
     # Ex. Puissance 41/40 (over de 1, 2 de puits) : une rune a 3 de puits retire 2 Puissance -> 39, +1 reliquat.
     parasites = {x: l["val"] - max(l["cible"], l["max"]) for x, l in L.items()
                  if l["max"] > 0 and l["val"] > max(l["cible"], l["max"])}
+    # Tout over non voulu peut etre recycle : meme Re cri 26/25 n'offre que
+    # 2 de poids et doit etre protege d'une rune a 10 si une petite rune tient.
+    _exc = sum(pds(x, n) for x, n in parasites.items())
+    # (une ligne a petit poids par point, meme a peine over : Vita 402/400 + une Ra Sagesse ratee = Vita 252,
+    #  tout le poids de la rune tombe d'abord sur l'over. Il faut le gerer avant toute rune lourde.)
+    gerer_over = _exc > 0
 
     def degat(s, t):
         """Lignes en over non voulu que cette rune ferait retomber sous leur max."""
         # Le reliquat ne protege pas : sur un echec critique la perte tombe sur les lignes, l'over en premier
         # (vu en jeu : Retrait PM rate avec 12 de reliquat, vita 458 -> 423, reliquat inchange).
         w = pds(s, qte(s, t))
+        if not gerer_over:
+            return []               # aucun over non voulu
         return [x for x, k in parasites.items() if x != s and -(-w // POIDS.get(x, 1)) > k]
 
     def meilleur(cands, cle=None):
@@ -368,13 +536,50 @@ def recommander(etat, conf, histo):
         ts = tailles(s)
         if len(ts) < 2 or l["cible"] <= l["max"] or [x for x in jet if x != s and POIDS.get(x, 0) < LOURD]:
             return False
-        return all(l["val"] + qte(s, t) > l["max"] or l["val"] >= 1.2 * palier(s, t) for t in ts[:-1])
+        return all(l["val"] + qte(s, t) > l["max"] or l["val"] >= palier(s, t) for t in ts[:-1])
 
     # Un exo est pose sur l'item (1er % dommages aux sorts...) : le jeu refuse toute rune qui ferait passer une
     # ligne normale au-dessus de son max (constate : Ra Vi impossible au-dessus de 400/450 avec le % pose).
-    exo_pose = any(l["max"] <= 0 and l["val"] > 0 and not l.get("virtuel") for l in L.values())
 
-    def essais(lignes, borne, over=True, libre=False):
+    def inutile(x, t, val, maxi):
+        """Rune normale hors de son palier alors qu'une plus grosse existe (Puissance +1 a 61 : 3 % de reussite),
+        ou rune normale de Sagesse sur une ligne a 40 : jamais. Elle ne fait que bruler du puits."""
+        mn_ = conf.get("mins", {}).get(x)
+        if mn_ is not None and L.get(x, {}).get("cible", 0) > val >= mn_ and val >= palier(x, t) \
+                and not (L[x]["cible"] > L[x]["max"] > 0):
+            return True                 # Do poussee 23 (min 23) : jamais une rune hors palier pour finir a 25
+        if t == "pa" and x in CARAC and val + qte(x, "pa") <= maxi:
+            return False                # Agilite 63 -> 66 : la Pa reste la bonne rune sous le max (pas une Ra a 73)
+        if t == "pa" and "ra" in tailles(x) and val >= palier(x, "pa"):
+            # Pa hors palier : seulement si tes passes disent qu'elle passe encore (Pa Vita a 300+ avec
+            # reliquat : 0 sur 7 -> non). On juge sur le taux appris pour cette stat dans cette situation.
+            # Avec puits, un neutre est paye par le reliquat (le reliquat devient de la stat) : on compte SC + SN.
+            # Sans puits, un neutre casse d'autres lignes : seule la reussite complete compte.
+            (psc_, psn_, _), _n = probas(histo, x, "pa", dict(L.get(x, {}), val=val, max=maxi))
+            return (psc_ + psn_ if avec_puits else 2.5 * psc_) < SEUIL_HORS_PALIER
+        if t != "base" or len(tailles(x)) == 1:
+            return False
+        if avec_puits:
+            # avec puits, la rune normale hors palier se juge pareil, sur tes stats (Do poussee +1 a 24 :
+            # 3 % de reussite, 29 % de neutres -> elle brule le reliquat pour rien)
+            if val < palier(x, "base"):
+                return False
+            (psc_, psn_, _), _n = probas(histo, x, "base", dict(L.get(x, {}), val=val, max=maxi))
+            return psc_ + psn_ < SEUIL_HORS_PALIER
+        return val >= palier(x, "base") or (x == "sa" and maxi > palier(x, "base"))
+
+    def ferme_finition(s, t):
+        """Ne pas quitter la plage de finition si la grosse rune ne tiendrait plus."""
+        l = L[s]
+        g = tailles(s)[-1]
+        plage = conf.get("regles", {}).get(s, {}).get(g)
+        if not plage or t == g or l["max"] <= 0:
+            return False
+        v, q, qg = l["val"], qte(s, t), qte(s, g)
+        return plage[0] <= v <= plage[1] and v + q < min(l["cible"], l["max"]) \
+            and v + qg <= plafond(s, l["max"]) < v + q + qg
+
+    def essais(lignes, borne, over=True, libre=False, plages=True):
         """Tous les couples (ligne, taille) jouables, notes par gain espere moins perte esperee.
         over=False : aucune rune ne fait passer la ligne au-dessus de son max (on remonte le jet).
         libre=True : toutes les tailles en stock, sans plage ni attente (pour depenser le reliquat)."""
@@ -402,7 +607,10 @@ def recommander(etat, conf, histo):
                 voulu = next((t for t in ("ra", "pa", "base") if t in regle
                               and regle[t][0] <= l["val"] <= regle[t][1]
                               and l["val"] + qte(s, t) <= limite), tp)
-                if not over and sous_max and l["val"] + qte(s, voulu) > l["max"]:
+                deborde = deborde_ok(s, l) and not any(p_[0] <= l["val"] <= p_[1] for p_ in regle.values())
+                if deborde:
+                    voulu = grosse_t                # hors de tes plages, coincee sous le max : Ra et over gere
+                elif not over and sous_max and l["val"] + qte(s, voulu) > l["max"]:
                     if vise_over:
                         if not peut_franchir(s, l):
                             continue               # l'over de cette ligne attend que le jet soit remonte
@@ -416,7 +624,9 @@ def recommander(etat, conf, histo):
                         continue
                     voulu = max(tient_, key=MULT.get)
                 if degat(s, voulu):                # casserait un over non voulu : une taille en dessous
-                    plus_petit = [t for t in l["dispo"] if MULT[t] < MULT[voulu] and not degat(s, t)]
+                    plus_petit = [t for t in l["dispo"] if MULT[t] < MULT[voulu] and not degat(s, t)
+                                  and not inutile(s, t, l["val"], l["max"])
+                                  and not (t != "base" and not avec_puits and l["val"] >= palier(s, t))]
                     if plus_petit:
                         voulu = max(plus_petit, key=MULT.get)
                 if voulu not in l["dispo"]:
@@ -434,11 +644,24 @@ def recommander(etat, conf, histo):
                     continue
             if not regle and "base" in permis and max(l["max"], l["cible"]) <= palier(s, "base"):
                 permis = ["base"]                   # petite ligne (Re cri 15...) : la rune normale passe bien partout
+            if libre and sous_max and plages and not avec_puits:
+                # reliquat a depenser sur une ligne du jet : les plages que tu as choisies tiennent toujours
+                # (vita 342 avec « Pa jusqu'a 299 » : pas de Pa Vita, meme payee par le reliquat)
+                plages_ = conf.get("regles", {}).get(s) or {}
+                dedans_ = [t for t in permis if t in plages_ and plages_[t][0] <= l["val"] <= plages_[t][1]]
+                if plages_ and dedans_:
+                    # une rune plus grosse que celle de ta plage reste permise : si le reliquat la paie, c'est
+                    # mieux (Ra Puissance dans 40 de reliquat sur la Psikopompe)
+                    permis = [t for t in permis if t in dedans_ or MULT[t] > max(MULT[d] for d in dedans_)]
             ligne = []
             en_over = libre and grosse_t != "base" and 0 < l["max"] <= l["val"] < l["cible"]
             for t in permis:
                 q = qte(s, t)
+                if ferme_finition(s, t):
+                    continue
                 if l["val"] + q > limite:
+                    continue
+                if inutile(s, t, l["val"], l["max"]):
                     continue
                 if exo_pose and l["max"] > 0 and l["val"] + q > l["max"]:
                     continue                        # exo pose : impossible de depasser le max (vita 405 + Ra refusee)
@@ -458,19 +681,24 @@ def recommander(etat, conf, histo):
                             and not (not vise_over and degat(s, tp) and not degat(s, t)):
                         continue
                     # depasser l'objectif : seulement avec la taille adaptee, pour finir la ligne
-                    if l["val"] + q > max(l["cible"], l["max"]) and not (t == tp and l["val"] < l["cible"]):
+                    # (over voulu : la grosse rune peut finir au-dessus de l'objectif, sous le plafond ;
+                    #  Vita 350 pour 390 -> Ra 400, plutot que de rester coincee et passer a l'exo)
+                    if l["val"] + q > max(l["cible"], l["max"]) and not (t == tp and l["val"] < l["cible"]) \
+                            and not (grosse(s, t) and (deborde_ok(s, l) or vise_over and l["val"] < l["cible"])):
                         continue
                 if not over and sous_max and l["val"] + q > l["max"]:
                     # franchir le max pendant la remontee du jet : la grosse rune d'un over voulu quand
                     # c'est son tour, ou la taille adaptee qui finit une ligne sans over
                     if vise_over and not (grosse(s, t) and peut_franchir(s, l)):
                         continue
-                    if not vise_over and t not in (tp, "base"):
+                    if not vise_over and t not in (tp, "base") and not (grosse(s, t) and deborde_ok(s, l)):
                         continue
                 (psc, psn, pec), n = probas(histo, s, t, l)
                 cout = min(max(0.0, pds(s, q) - rel), autres)
                 perte = cout * (utiles / autres if autres else 0)
-                note = (psc + psn) * pds(s, min(q, besoin)) - .15 * (psn + pec) * perte
+                # poids des pertes cale sur tes passes (oct. 2026) : 0.5 colle le mieux a ce qui s'est vraiment
+                # passe (correlation 0.41 contre 0.34 avec l'ancien 0.15, qui sous-estimait les pertes)
+                note = (psc + psn) * pds(s, min(q, besoin)) - POIDS_PERTE * (psn + pec) * perte
                 ligne.append((note, MULT[t], s, t, psc, psn, n, perte))
             out += ligne
         return out, sans_rune
@@ -487,8 +715,9 @@ def recommander(etat, conf, histo):
             txt += "   | A ACHETER : " + ", ".join(sans_rune)
         casse = degat(s, t)
         if casse:
-            txt += "   | ATTENTION : fera retomber sous son max " + ", ".join(
-                f"{L[x]['nom']} (over de {parasites[x]})" for x in casse)
+            txt += "   | ATTENTION : fera retomber " + ", ".join(
+                f"{L[x]['nom']} sous son " + ("objectif" if L[x]["cible"] > L[x]["max"] else "max")
+                + f" (over de {parasites[x]})" for x in casse)
         txt += note_blocage()
         return {"stat": s, "taille": t, "virtuel": L[s].get("virtuel", False), "texte": txt}
 
@@ -519,6 +748,13 @@ def recommander(etat, conf, histo):
         l["bas"] = min(conf.get("mins", {}).get(s, l["cible"]), l["cible"], l["max"])
         milieu = -(-(l["bas"] + min(l["cible"], l["max"])) // 2)
         l["haut"] = max(l["bas"], min(conf.get("remonte", {}).get(s, milieu), l["cible"], l["max"]))
+        # sans puits : une ligne encore dans le premier quart de son jet (Puissance 62 sur 61-80) se remonte
+        # tout de suite avec sa grosse rune, meme si elle a atteint son minimum accepte
+        g_ = tailles(s)[-1]
+        p_ = conf.get("regles", {}).get(s, {}).get(g_)
+        if not avec_puits and g_ != "base" and l["max"] > l.get("min", 0) and p_ and p_[0] <= l["val"] <= p_[1] \
+                and (l["val"] - l.get("min", 0)) / (l["max"] - l.get("min", 0)) < .25:
+            l["bas"] = l["haut"] = max(l["bas"], min(l["cible"], l["max"]))
     if deja:
         _CYCLE[0] = False
     elif any(l["max"] > 0 and l["val"] < l["bas"] for l in L.values()):
@@ -561,14 +797,28 @@ def recommander(etat, conf, histo):
         en SC pioche TOUT son poids dans cette ligne (un Re % air a 6 de puits : vita -30). Avant une rune plus
         lourde que l'excedent, on vide donc l'over avec de petites runes : la plus grosse qui tient dans
         l'excedent, sinon la plus petite possible (1 ou 2 de puits), jusqu'a ce que la ligne soit a son max."""
-        if entame or not any(L[x]["cible"] > 0 for x in parasites):       # (une ligne jetable en over : on s'en fiche)
+        if (entame and not all(x in CARAC for x in parasites)) or not any(L[x]["cible"] > 0 for x in parasites):
             return None
         exc = sum(pds(x, n) for x, n in parasites.items())
+        if not gerer_over:
+            return None                 # petit over gratuit (Ré feu 8/7) : il sert de tampon, on ne le brule pas
         cands = []
         for x, y in L.items():
             if x in parasites or y["max"] <= 0 or x == "pods" or x in intouchables:
                 continue                             # (Vi et Ini a 1 de densite sont permises ; l'over lui-meme non)
             for t in y["dispo"]:
+                if ferme_finition(x, t):
+                    continue
+                # (ici une rune qui rate est ce qu'on cherche : Puissance +1 a 2 de puits ramene Vita 402 a 392 ;
+                #  une rune normale hors palier est donc permise, mais pas une Pa hors palier)
+                if t == "pa" and "ra" in tailles(x) and y["val"] >= palier(x, "pa") \
+                        and not (x in CARAC and y["val"] + qte(x, "pa") <= y["max"]):   # (Pa Agi 63 -> 66 : oui)
+                    continue
+                # ligne a son minimum accepte : jamais une rune hors palier (Do poussee 23, min 23 : pas de Do pou)
+                # (une rune de 2 de puits ou moins reste permise : Puissance +1 a 71 pour gerer la Vita)
+                if y["cible"] > y["val"] >= conf.get("mins", {}).get(x, 10 ** 9) and y["val"] >= palier(x, t) \
+                        and pds(x, qte(x, t)) > 2:
+                    continue
                 # une ligne deja a son max peut quand meme recevoir une petite rune normale (+1 agi, +1 re cri) :
                 # elle ne passera presque jamais, et c'est justement ce qui fait descendre l'over
                 if y["val"] + qte(x, t) <= y["max"] or (t == "base" and pds(x, qte(x, t)) <= 2
@@ -579,15 +829,94 @@ def recommander(etat, conf, histo):
         if [k for k in cands if dedans(k) and par_poids(k)[0] <= max(exc, 2)]:
             cands = [k for k in cands if dedans(k)]          # tant qu'une ligne sous son max peut servir, elle d'abord
         tient = [k for k in cands if par_poids(k)[0] <= exc]
-        utile = lambda k: L[k[2]]["val"] < L[k[2]]["cible"]
+        if tient:
+            # Recycler l'excedent sans entamer le jet naturel tant qu'une rune
+            # disponible le permet, meme si l'objectif est inferieur au max.
+            cands = tient
+        # (une ligne deja a son minimum accepte n'est pas « utile » : Do poussee 23, min 23 -> pas de Do pou ici)
+        utile = lambda k: L[k[2]]["val"] < L[k[2]]["cible"] and L[k[2]]["val"] < conf.get("mins", {}).get(k[2], 10 ** 9)
+        # la rune dont le poids ramene l'over le plus pres du max (Vita 411 : 2.2 de puits -> une rune a 3,
+        # Vita 396 ; plutot qu'une rune a 1, Vita 406, qu'il faudrait refaire)
+        # d'abord la plus petite rune qui ramene sous le max en un coup (poids >= excedent), sinon la plus
+        # grosse qui tient dans l'excedent
+        # Proteger le max naturel, y compris si l'objectif accepte un jet plus bas.
+        # Les petits depassements ne sont envisages qu'en l'absence de rune qui tient.
+        marge = exc  # le max naturel est le plancher, pas l'objectif du profil
+        # 0) petit over sur une carac (Force 72/70) : les petites runes d'une carac a monter le kickent
+        #    (Agilite +1 puis Pa Agilite), pas une Sagesse ni une Ra Agilite
+        if all(x in CARAC for x in parasites):
+            kick = [k for k in cands if utile(k) and k[2] in CARAC and par_poids(k)[0] <= marge + 1e-9]
+            if kick:                # (Force 74/70, Agi 67 : Pa Agi -> 70, kicke l'over de 3 ; Agi +1 si la Pa depasse)
+                return max(kick, key=lambda k: (par_poids(k)[0], k[4]))
+            # (aucune carac a monter : la plus grosse rune utile qui tient dans l'over, Force 76 -> Pa Vita (3)
+            #  -> 73 -> Pa Vita -> 70 ; pas une Ra Vita (10) qui la ferait tomber a 66)
+            kick = [k for k in cands if utile(k) and par_poids(k)[0] <= marge + 1e-9]
+            if kick:
+                return max(kick, key=lambda k: (par_poids(k)[0], k[4]))
+        # 0b) over sur une ligne legere (Vita 215/200) : une petite rune d'une ligne a monter dont l'echec reste
+        #     au-dessus du max naturel (Puissance +1, 2 de puits = 10 vita), la plus lourde qui tient ; on la
+        #     repete si besoin. Pas une Sagesse a 3 sur une ligne deja a son objectif.
+        if all(POIDS.get(x, 1) < 1 for x in parasites):
+            kick = [k for k in cands if L[k[2]]["val"] < L[k[2]]["cible"] and k[3] == "base"
+                    and par_poids(k)[0] <= min(marge, 2) + 1e-9]
+            if kick:
+                return max(kick, key=lambda k: (par_poids(k)[0], k[4]))
+            # (Puissance deja a 80 : une rune simple d'une autre ligne, Sagesse +1 a 3, qui ne fait pas
+            #  retomber la Vita sous son objectif ; pas une Pa Sagesse a 9)
+            kick = [k for k in cands if k[3] == "base" and par_poids(k)[0] <= min(marge, 3) + 1e-9]
+            if kick:
+                return max(kick, key=lambda k: (par_poids(k)[0], k[4]))
+        dans_obj = [k for k in cands if exc <= par_poids(k)[0] <= marge + 1e-9]
+        if dans_obj:
+            return min(dans_obj, key=lambda k: (par_poids(k)[0], not utile(k), -k[4]))
+        # 2) sinon une rune d'exo a 1 de puits (Agi, Fo, Int, Cha +1) si elle tient : joue() la propose
+        if exc <= 1 <= marge and not exo_pose and any(c_ not in L for c_ in CARAC):
+            return None
+        # 3) sinon la plus petite rune qui ramene sous le max en un coup
+        assez = [k for k in cands if exc <= par_poids(k)[0] <= exc + 8]
+        if assez:
+            return min(assez, key=lambda k: (par_poids(k)[0], not utile(k), -k[4]))
         if tient:
             return max(tient, key=lambda k: (utile(k), par_poids(k)[0], k[4]))
         petit = [k for k in cands if par_poids(k)[0] <= 2]
         return min(petit, key=lambda k: (not utile(k), par_poids(k)[0], -k[4])) if petit else None
 
+    def tampon(k):
+        """REGLE GENERALE de l'over, sans puits. Toute rune ratee pioche d'abord dans ce qui depasse le max
+        (l'over, voulu ou non), puis dans le reliquat. Ce « tampon » vaut : poids de l'over + reliquat.
+        Si la rune prevue pese plus que le tampon (Ré neutre 6 sur un over de Vita 362 = 2.4), son echec casse
+        l'over ET d'autres lignes. On joue d'abord la rune utile dont le poids colle le mieux au tampon
+        (Pa Force 3) : si elle passe, une ligne monte ; si elle rate, c'est l'over qui paie, pas le jet.
+        Ensuite la rune prevue. Vaut pour tous les items : Force 72/70 -> Pa Agi, Vita 362 -> Pa Force...
+        Pas avec puits (le reliquat paie), pas pour la rune de l'over lui-meme ni pour un gros exo (PO, PM),
+        et pas quand l'over a atteint son minimum accepte (on le garde pour l'exo)."""
+        if avec_puits or L[k[2]]["max"] <= 0 or POIDS.get(k[2], 0) >= LOURD:
+            return None
+        overs = [x for x, l_ in L.items() if 0 < l_["max"] < l_["val"] and x != k[2] and x not in parasites
+                 and l_["val"] < conf.get("mins", {}).get(x, l_["cible"])]
+        if not overs:
+            return None
+        t_ = sum(pds(x, L[x]["val"] - L[x]["max"]) for x in overs) + rel
+        w = pds(k[2], qte(k[2], k[3]))
+        if w <= t_ + 1e-9:
+            return None
+        ex, _ = essais([x for x, l_ in L.items() if 0 < l_["max"] and x not in overs and x not in parasites
+                        and l_["val"] < l_["cible"] and POIDS.get(x, 0) < LOURD], lambda l: l["cible"])
+        ex = [c_ for c_ in ex if par_poids(c_)[0] < w and L[c_[2]]["val"] + qte(c_[2], c_[3]) <= L[c_[2]]["max"]]
+        if not ex:
+            return None
+        b = min(ex, key=lambda c_: (abs(par_poids(c_)[0] - t_), -c_[4]))
+        r = sortie(b, "GÈRE L'OVER", sans)
+        r["texte"] += (f"   | over de {', '.join(L[x]['nom'] + ' ' + str(L[x]['val']) for x in overs)} trop petit "
+                       f"pour {nom_rune(k[2], k[3])} : on le dépense d'abord sur une rune utile")
+        return r
+
     def joue(k, prefixe):
         """Sortie normale, sauf si cette rune casserait un over non voulu : on gere l'over d'abord."""
-        if degat(k[2], k[3]):
+        r_ = tampon(k)
+        if r_:
+            return r_
+        if degat(k[2], k[3]) and gerer_over:
             b = bruler()
             suite = ", ".join(f"{L[x]['nom']} {L[x]['val']}/{L[x]['max']}" for x in parasites) \
                 + f" à ramener au max avant {('' if k[3] == 'base' else k[3].capitalize() + ' ') + L[k[2]]['nom']}"
@@ -629,6 +958,29 @@ def recommander(etat, conf, histo):
 
     lourd = [k for k in c if POIDS.get(k[2], 0) >= LOURD]
     leger = [k for k in c if POIDS.get(k[2], 0) < LOURD]
+    # Premier et seul % sorts demande : exploiter le puits avant la remise
+    # d'une ligne structurelle, une fois les remontees jouables terminees.
+    exo_puits = []
+    if not leger and not sans and not deja and conf.get("exos", {}).get("do_per_so") == 1 \
+            and any(k[2] in ("pa", "pm", "po", "invo") for k in lourd) \
+            and L.get("do_per_so", {}).get("max", 1) <= 0 \
+            and L["do_per_so"]["val"] == 0 and rel >= pds("do_per_so", 1):
+        exo_puits, _ = essais(["do_per_so"], lambda l: l["cible"])
+    # Une ligne lourde vient de tomber (PM, PO...) : sa chute a mis son poids dans le reliquat (PM -> ~85).
+    # On la remet TOUT DE SUITE avec ce puits. Avant, on le depensait sur les petites lignes, puis on remettait
+    # le PM avec 1 de reliquat : la reussite prenait 90 de poids sur l'item (tes bottes : Vita 314 -> 35).
+    # (puits >= poids de la rune : elle passe a coup sur. PM 90 : il faut 90 de reliquat)
+    # Sans over deja monte a proteger, le puits de sa chute (PM tombe -> ~87) suffit : on le remet tout de suite.
+    over_en_place = any(0 < l["max"] < l["val"] and l["cible"] > l["max"] for l in L.values())
+    # (jamais sur un item avec un over voulu : le gros puits remis alourdit l'item et l'over ne passe plus ;
+    #  il se remet APRES l'over)
+    over_voulu = any(0 < l["max"] < l["cible"] for l in L.values())
+    tout_de_suite = [k for k in lourd if not exo_puits and not over_voulu and rel >= pds(k[2], qte(k[2], k[3]))
+                     and L[k[2]]["max"] - L[k[2]]["val"] <= qte(k[2], k[3])]   # une seule rune la remet (PA, PM, PO)
+    if tout_de_suite:
+        r = joue(meilleur(tout_de_suite), "REMETS")
+        r["texte"] += f"   | avec le puits de sa chute ({rel:g} de reliquat)"
+        return r
     if c or jet_obj:
         # a) ce que le reliquat paie en entier sur les lignes du jet, la plus grosse rune d'abord
         #    (1 Dommage a 20 de puits passe dans 98 de reliquat ; le PA a 100 attend)
@@ -636,19 +988,49 @@ def recommander(etat, conf, histo):
         #    dedans en premier. On choisit donc une rune qui tient dans reliquat + excedent, la plus grosse
         #    d'abord (un Do air a 5 de puits ramene la vita a 455), et jamais une rune plus grosse que ce qui
         #    reste (a 451, un Do air la ferait retomber a 426 : une petite rune a la place).
-        payes = [k for k in essais(jet_obj, lambda l: min(l["cible"], l["max"]), over=False, libre=True)[0]
-                 if (pds(k[2], qte(k[2], k[3])) <= rel or recycle(k))
+        def payables(plages_):
+            return [k for k in essais(jet_obj, lambda l: min(l["cible"], l["max"]), over=False, libre=True,
+                                      plages=plages_)[0]
+                    if (pds(k[2], qte(k[2], k[3])) <= rel or recycle(k))
+                    # ligne deja a son minimum accepte (Do poussee 23, min 23, objectif 25) : on ne la finit
+                    # qu'avec une rune qui passe bien, jamais avec une rune hors palier
+                    and not (L[k[2]]["val"] >= conf.get("mins", {}).get(k[2], 10 ** 9)
+                             and L[k[2]]["val"] >= palier(k[2], k[3]))
                  and (k[2] in jet or not degat(k[2], k[3]))     # rune facultative : jamais si elle peut casser un over
                  and (k[2] in jet or not deja)      # exo/over deja pose : aucune rune facultative, meme payee par le
                                                     # reliquat (son echec critique tomberait sur l'exo)
-                 and (POIDS.get(k[2], 0) <= LOURD or not leger)]   # PO/PM/PA : jamais tant qu'une ligne legere manque
+                 and (POIDS.get(k[2], 0) <= LOURD or not leger)   # PO/PM/PA : jamais tant qu'une ligne legere manque
+                 and not (exo_puits and k[2] in ("pa", "pm", "po", "invo"))
+                 # ligne a over voulu (Vita 330, max 350) : pas de Pa pour la caler au max, c'est la Ra qui
+                 # passe le max (330 -> 380), geree par l'over plus bas
+                 and not (L[k[2]]["cible"] > L[k[2]]["max"] > 0 and k[3] != tailles(k[2])[-1]
+                          and L[k[2]]["val"] + qte(k[2], tailles(k[2])[-1]) <= plafond(k[2], L[k[2]]["max"]))]
+        payes = payables(True)
+        hors_plage = False
+        if not [k for k in payes if pds(k[2], qte(k[2], k[3])) <= rel]:
+            # rien dans tes plages que le reliquat paie : on tente quand meme hors plage (Pa Puissance a 64
+            # dans 7 de reliquat). Ca passe rarement, mais l'echec est paye par le reliquat.
+            # ... sauf sur une ligne ou ta grosse rune est prevue a cette valeur (Vita 347, Ra de 200 a 365) :
+            # une Pa la monterait a 362 et la Ra suivante deviendrait un over qui ne passe plus
+            def ra_prevue(k):
+                pl = conf.get("regles", {}).get(k[2]) or {}
+                v = L[k[2]]["val"]
+                return any(t_ != k[3] and MULT[t_] > MULT[k[3]] and p_[0] <= v <= p_[1] for t_, p_ in pl.items())
+            payes_hp = [k for k in payables(False) if pds(k[2], qte(k[2], k[3])) <= rel and not ra_prevue(k)]
+            if payes_hp:
+                payes, hors_plage = payes_hp, True
         if [k for k in payes if POIDS.get(k[2], 0) < LOURD]:    # le PO attend que tout le reste soit utilise
             payes = [k for k in payes if POIDS.get(k[2], 0) < LOURD]
         if payes:
             # d'abord les lignes encore sous leur minimum, puis celles qu'on finit vers l'objectif
-            k = meilleur(payes, lambda k: (k[2] in jet, lourdes_d_abord(k), par_poids(k)))
+            # (une ligne a over voulu, Vita 306, passe apres les autres : Force 66 -> Pa Force d'abord)
+            k = meilleur(payes, lambda k: (k[2] in jet, lourdes_d_abord(k),
+                                           not (L[k[2]]["cible"] > L[k[2]]["max"] > 0), par_poids(k)))
             if pds(k[2], qte(k[2], k[3])) <= rel:
-                return joue(k, "DANS LE RELIQUAT")
+                r = joue(k, "DANS LE RELIQUAT")
+                if hors_plage:
+                    r["texte"] += "   | hors de tes plages : ça passe rarement, seulement parce que le reliquat paie"
+                return r
             if degat(k[2], k[3]):                    # ligne sous son min mais rune trop lourde pour l'over
                 return joue(k, "REMONTE")
             r = sortie(k, "DANS L'OVER", sans)
@@ -664,42 +1046,99 @@ def recommander(etat, conf, histo):
         if leger and not lourd:
             rec = [k for k in leger if recycle(k)]
             if rec:                          # l'excedent d'une ligne en over non voulu paie cette rune
-                r = sortie(max(rec, key=par_poids), "REMONTE", sans)
+                r = joue(max(rec, key=par_poids), "REMONTE")
                 r["texte"] += "   | réutilise l'excédent de " + ", ".join(L[x]["nom"] for x in parasites if x != r["stat"])
                 return r
             if [k for k in leger if not degat(k[2], k[3])]:      # pas de rune qui casse un over si une autre existe
                 leger = [k for k in leger if not degat(k[2], k[3])]
-            k = None if lourd or entame else carburant()   # (pas quand PO/PM/PA a saute : retour a l'exo au plus vite)
+            # jet presque fini (il manque peu de poids sur les lignes utiles) : pas de carburant, on finit
+            # le jet et on passe a l'over / l'objectif (Cape : Do neutre jetable remontee a 2 runes de la fin)
+            manque_ = sum(pds(x, max(0, min(l_.get("bas", l_["cible"]), l_["max"]) - l_["val"]))
+                          for x, l_ in L.items() if l_["cible"] > 0 < l_["max"] and POIDS.get(x, 0) < LOURD)
+            k = None if lourd or entame or manque_ <= 25 else carburant()   # (pas quand PO/PM/PA a saute)
             # on jongle : une jetable tombee bas remonte avant les lignes utiles
             if k:
                 return sortie(k, "CARBURANT (ligne jetable basse)", sans)
             # remonter toutes les lignes petit a petit plutot qu'une ligne a fond : la moins remplie d'abord
-            gros = [k for k in leger if lourdes_d_abord(k)]
-            leger = gros or leger
-            vide = min(L[k[2]]["val"] / L[k[2]]["max"] for k in leger)
-            return joue(meilleur([k for k in leger if L[k[2]]["val"] / L[k[2]]["max"] <= vide + .1]), "REMONTE")
-        # c) il ne manque plus que des lignes lourdes : le reliquat restant part d'abord dans les over voulus
-        k = dans_reliquat()
-        if k:
-            return sortie(k, "DANS LE RELIQUAT", sans)
+            # « la plus basse » = par rapport a son jet min-max : Puissance 61 sur 61-80 est a 0 %, Vita 300
+            # sur 351-400 est sous son min (negatif) : elle passe d'abord. C'est la plus rapide a remonter.
+            def rempli(l):
+                if avec_puits:
+                    return l["val"] / l["max"]              # (comme sur les Psikopompe)
+                return (l["val"] - l.get("min", 0)) / max(1, l["max"] - l.get("min", 0))
+            # ligne sous son min naturel (Vita 347 sur 351-400) d'abord ; sinon, comme avant (Psikopompe),
+            # les lignes lourdes par point d'abord, puis la plus basse dans son jet
+            sous = [] if avec_puits else [k for k in leger if rempli(L[k[2]]) < 0]
+            gros = [k for k in leger if lourdes_d_abord(k)] if avec_puits else []   # sans puits : la plus basse d'abord
+            leger = sous or gros or leger
+            # Over voulu deja commence (Vita 362/350) et pas de puits : on gere l'over. Les runes legeres d'abord
+            # (Pa Force a 3 de poids tient dans l'over), puis les lourdes (Ré neutre a 6) ; pas une Ra Vita a 2 %
+            # pour « proteger » l'over.
+            vide = min(rempli(L[k[2]]) for k in leger)
+            return joue(meilleur([k for k in leger if rempli(L[k[2]]) <= vide + .1]), "REMONTE")
+        # c) il ne manque plus que des lignes lourdes (PM, PO tombes). Le gros puits (PA, PM, PO) ne se remet
+        #    qu'une fois l'over fait (Vita a 440, +90) : l'over sert de tampon a la remise. Apres, s'il reste
+        #    du reliquat, on peut tenter plus d'over (le bonus).
+        # l'over est « fait » des que la prochaine grosse rune le ferait passer au-dela de 20 de poids
+        # (Vita +80 = 16 de poids ; +50 de plus = 26) : on remet alors le gros puits, puis on tente plus haut
+        def over_fait(x, l):
+            g_ = tailles(x)[-1]
+            # fait = l'objectif d'over atteint, ou presque (Vita +80 pour +90 : on remet le PM, puis on tente
+            # plus haut avec le reliquat qui reste)
+            # (avec un minimum accepte, Vita 440 / min 435 : fait des 435, pas avant ; 432 -> encore une Ra)
+            m_ = conf.get("mins", {}).get(x)
+            if m_:
+                return l["val"] >= m_
+            # ... ou des que l'over pese deja 15 de puits ou plus (Do % sorts 5/4 : 1 point = 15). Une ligne
+            # lourde par point : le 5e % pose avec le puits, on remet tout de suite le PA, le 6e se tente apres
+            # (vu le 14/10 : le puits brule sur le 6e, puis le PA remis sans puits a efface les 5 %).
+            return l["val"] >= l["cible"] or l["val"] - l["max"] >= .8 * (l["cible"] - l["max"]) \
+                or pds(x, l["val"] - l["max"]) >= 15
+        # (seulement un over deja commence, au-dessus du max : sinon il n'y a rien a proteger, on remet le PM)
+        # ... et seulement tant que le puits de sa chute paie la grosse rune de l'over (Ra Vita : 10).
+        # Quand il ne reste plus ce reliquat, on remet la grosse rune tout de suite (pas de Ra Vita a 0 de puits).
+        a_faire = [x for x, l in L.items() if 0 < l["max"] < l["cible"] and not over_fait(x, l)
+                   and rel >= pds(x, qte(x, tailles(x)[-1]))]
+        if a_faire and gerer_over and any(L[x]["cible"] > 0 for x in parasites):
+            b_ = bruler()                   # Force 76/70 : d'abord ramener la Force (Pa Vita, Agi...), puis l'over
+            if b_:
+                r = sortie(b_, "GÈRE L'OVER", sans)
+                r["texte"] = re.sub(r"   \| ATTENTION : fera retomber[^|]*", "", r["texte"]) + "   | " + ", ".join(
+                    f"{L[x]['nom']} {L[x]['val']}/{L[x]['max']}" for x in parasites) + " à ramener au max avant l'over"
+                return r
+        if a_faire and any(x in alignes for x in a_faire):
+            d_ = descente()                 # l'over d'abord realigne (Vita 380 -> 355), comme sur les Psikopompe
+            if d_:
+                d_["texte"] += "   | " + ", ".join(L[k_[2]]["nom"] for k_ in lourd) + " : à remettre une fois l'over fait"
+                return d_
+        if a_faire and not exo_pose:
+            k = dans_reliquat()
+            # (joue : un over parasite, Force 76/70, se gere avant la Ra Vita qui le mangerait : Force -> 66)
+            if k:
+                r = joue(k, "DANS LE RELIQUAT")
+            else:
+                co, _ = essais(a_faire, lambda l: l["cible"])
+                r = joue(meilleur(co), "OVER") if co else None
+            if r:
+                r["texte"] += "   | " + ", ".join(L[k_[2]]["nom"] for k_ in lourd) + " : à remettre une fois l'over fait"
+                return r
+        if exo_puits:
+            r = joue(meilleur(exo_puits), "EXO DANS LE PUITS")
+            r["texte"] += "   | tenter le 1 % sorts avant de remettre la ligne lourde"
+            return r
         return joue(meilleur(lourd), "REMETS")
     k = dans_reliquat(True)                  # jet complet : le reliquat part d'abord dans les over voulus
     if k:
         return sortie(k, "DANS LE RELIQUAT", sans)
     # jet au minimum : on tente l'exo / l'over tout de suite, sans remonter une ligne jetable avant
-    if bloquees or attente:
-        # plus rien d'autre a monter : la plus petite rune jouable ailleurs, juste pour faire des pertes
-        petites = [((x in ("vi", "ini", "pods"), pds(x, qte(x, "base"))), x) for x, y in L.items()
-                   if x not in bloquees and x not in attente and "base" in y["dispo"] and y["max"] > 0
-                   and y["val"] + qte(x, "base") <= plafond(x, y["max"])]
-        if petites and (min(petites)[0][1] <= 2 or not alignes):
-            x = min(petites)[1]
-            return {"stat": x, "taille": "base", "virtuel": False,
-                    "texte": f"DESCENTE {L[x]['nom']} +{qte(x, 'base')}{note_blocage()}"}
-        if alignes:                                # aucune petite rune sur l'item : une rune a 1 de puits en exo
-            x = next((c for c in CARAC if c not in L), "ini")
-            return {"stat": x, "taille": "base", "virtuel": True,
-                    "texte": f"DESCENTE {nom_code(x)} +{qte(x, 'base')} (exo à 1 de puits){note_blocage()}"}
+    # une ligne en attente de sa Ra mais deja a son minimum accepte (Puissance 71, min 68) : elle est finie,
+    # on ne fait pas de « descente » pour elle, on passe a l'over / l'exo
+    bloquees_bas = {x: v for x, v in bloquees.items()
+                    if x in alignes or L[x]["val"] < L[x].get("bas", L[x]["cible"])}
+    if bloquees_bas or attente:
+        d_ = descente()
+        if d_:
+            return d_
     if sans:
         return {"texte": "A ACHETER : runes " + ", ".join(sans)}
     # 3) over / exo : le plus lourd d'abord
@@ -710,7 +1149,33 @@ def recommander(etat, conf, histo):
     mins, plan_b = conf.get("mins", {}), conf.get("plan_b")
     entames = [s for s in vises if s in mins and L[s]["val"] > L[s]["max"] > 0]
     rates = [s for s in entames if L[s]["val"] < mins[s]]
-    vises = [s for s in vises if s not in entames or s in rates]
+    # (minimum atteint mais le puits paie encore la grosse rune et elle tient sous le plafond : Vita 437,
+    #  12 de reliquat -> Ra Vita quand meme)
+    paie_ra = lambda s: rel >= pds(s, qte(s, tailles(s)[-1])) \
+        and L[s]["val"] + qte(s, tailles(s)[-1]) <= plafond(s, L[s]["max"])
+    # (yoyo : minimum atteint, sans puits, mais d'autres lignes sont au-dessus de leur objectif - Sagesse 50
+    #  pour 38, Fuite 35 pour 32. Leur excedent paie l'echec : on tente encore l'over (le 6e % en SC) tant
+    #  qu'il couvre la rune. Il s'arrete tout seul quand Sagesse et Fuite sont a leur objectif.)
+    def yoyo(s):
+        if any(l_["max"] <= 0 and l_["val"] < l_["cible"] for l_ in L.values()):
+            return False            # un exo (PO...) attend encore : l'over a son minimum lui sert de tampon
+        exc_ = sum(pds(x, l_["val"] - l_["cible"]) for x, l_ in L.items()
+                   if x != s and l_["max"] > 0 and 0 < l_["cible"] < l_["val"] and not l_["cible"] > l_["max"])
+        t_ = next((t for t in tailles(s) if t in L[s]["dispo"]
+                   and L[s]["val"] + qte(s, t) <= plafond(s, L[s]["max"])), None)
+        return t_ is not None and exc_ + rel >= pds(s, qte(s, t_))
+    vises = [s for s in vises if s not in entames or s in rates or paie_ra(s) or yoyo(s)]
+    # (minimum atteint, le reste du puits ne paie plus de Ra : on l'epuise avec la plus grosse rune qu'il paie,
+    #  Pa Vita a 3, Vita +5 a 1)
+    for s in entames:
+        if s in rates or paie_ra(s):
+            continue
+        g_ = next((t_ for t_ in reversed(tailles(s)) if t_ in L[s].get("dispo", ())
+                   and rel >= pds(s, qte(s, t_)) and L[s]["val"] + qte(s, t_) <= plafond(s, L[s]["max"])), None)
+        if g_:
+            return {"stat": s, "taille": g_, "virtuel": False,
+                    "texte": f"BONUS dans le reliquat : {nom_rune(s, g_)} +{qte(s, g_)}   | {L[s]['nom']} "
+                             f"{L[s]['val']} (minimum {mins[s]} atteint), {rel:g} de reliquat paie la rune"}
     if rates and plan_b in POIDS and L.get(plan_b, {"val": 0})["val"] < 1:
         if plan_b not in L:
             L[plan_b] = {"nom": nom_code(plan_b), "min": 0, "max": 0, "val": 0, "cible": 1,
@@ -724,26 +1189,115 @@ def recommander(etat, conf, histo):
     if rates and plan_b in L and L[plan_b]["val"] >= 1:
         vises = [s for s in vises if s not in rates]          # plan B pose : on arrete l'over
     if not vises:
+        if jet_leger_incomplet:
+            return {"texte": "JET A REPRENDRE : 1 % sorts pose, sous le minimum : "
+                    + ", ".join(L[s]["nom"] for s in jet_leger_incomplet), "stop": True}
         propre = not any(l["max"] <= 0 < l["val"] or l["val"] > l["max"] > 0 for l in L.values())
+        jet_fini = all(l["val"] >= min(l["cible"], l["max"]) for s, l in L.items()
+                       if l["max"] > 0 and l["cible"] > 0)
+        if finition and propre and jet_fini:
+            l = L[finition]
+            bonus = []
+            for t in tailles(finition):
+                q = qte(finition, t)
+                if t not in l["dispo"] or pds(finition, q) > rel or l["val"] + q > l["max"]:
+                    continue
+                (psc, psn, _), _n = probas(histo, finition, t, l)
+                bonus.append(((psc + psn) * q, MULT[t], t))
+            if bonus:
+                t = max(bonus)[2]
+                return {"stat": finition, "taille": t, "virtuel": False,
+                        "texte": f"FINITION RELIQUAT : {nom_rune(finition, t)} +{qte(finition, t)}"
+                                 f"   | jet principal atteint, bonus {l['val']}/{l['max']}"
+                                 f"   | {rel:g} de reliquat, sans depasser le maximum naturel"}
         return {"texte": "OBJECTIF ATTEINT"
                 + ("   | ni exo ni over sur l'item : tu peux le finir avec une rune de transcendance "
                    "(100 % de réussite, mais elle verrouille l'item)" if propre else "")
                 + (f"   | {rel:g} de reliquat : il est perdu si tu équipes ou mets en vente l'item" if rel >= 1 else "")}
+    # Double exo : jet propre, overs faits, il ne reste que le gros exo (PA, PM, PO) et le reliquat ne suffit pas
+    # a le payer. Avant de le tenter, on met ce reliquat dans un petit exo a 1 de puits (Agi, Fo, Int, Cha +1 ou
+    # Ini +10) : l'echec est paye par le reliquat. JUSTE s'il y a du reliquat. Un exo pose interdit ensuite tout
+    # over : c'est pour ca qu'on attend que les overs soient faits.
+    gros = [x for x in vises if L[x]["max"] <= 0 and POIDS.get(x, 0) >= LOURD and L[x]["val"] < L[x]["cible"]]
+    petit_pose = any(l["max"] <= 0 < l["val"] and x not in conf.get("exos", {}) for x, l in L.items())
+    # Over voulu sur l'item (Vita 390/350) : pas de petit exo (Ini +10 ratee = 10 vita en moins, l'over sort de
+    # l'objectif). Le reliquat qui reste part dans l'over avec la plus grosse rune qu'il paie (Ra si 10, Pa a 3,
+    # Vita +5 a 1), puis on tente le gros exo.
+    ov_ = [x for x, l in L.items() if 0 < l["max"] < l["val"] and l["cible"] > l["max"]]
+    if gros and set(vises) <= set(gros) and ov_ and rel >= 1:
+        for x in ov_:
+            g_ = next((t_ for t_ in reversed(tailles(x)) if t_ in L[x]["dispo"] and rel >= pds(x, qte(x, t_))
+                       and L[x]["val"] + qte(x, t_) <= plafond(x, L[x]["max"])), None)
+            if g_:
+                return {"stat": x, "taille": g_, "virtuel": False,
+                        "texte": f"DANS LE RELIQUAT {nom_rune(x, g_)} +{qte(x, g_)}   | {rel:g} de reliquat : on le "
+                                 f"vide dans l'over de {L[x]['nom']}, puis {' / '.join(L[y]['nom'] for y in gros)}"}
+    # Petit exo : seulement si la présélection en nomme un (« Petit exo » : Agi, Fo, Int, Cha ou Ini).
+    choix = conf.get("petit_exo")
+    if gros and set(vises) <= set(gros) and not parasites and not petit_pose and choix in PETITS_EXOS \
+            and choix not in L and not ov_ \
+            and 1 <= rel < min(pds(x, qte(x, "base")) for x in gros):
+        return {"stat": choix, "taille": "base", "virtuel": True, "petit_exo": True,
+                "texte": f"PETIT EXO dans le reliquat : {nom_rune(choix, 'base')} +{qte(choix, 'base')} avant le "
+                         f"{' / '.join(L[x]['nom'] for x in gros)}   | {rel:g} de reliquat paie l'échec"
+                         + ("" if choix in RUNES_APPRISES else
+                            "   | rune pas encore apprise : bouton « Apprendre la rune » à côté de Petit exo")}
+    # L'over (et l'exo) seulement sur un jet complet : tant qu'une ligne est sous son minimum, chaque rune
+    # ratee pour la remonter pioche d'abord dans l'over (Vita 397 -> 336 en deux Ré neutre ratees).
+    jet_incomplet = [x for x, l in L.items() if 0 < l["max"] and not (l["cible"] > l["max"])
+                     and l["val"] < min(conf.get("mins", {}).get(x, l["cible"]), l["cible"], l["max"])
+                     # (PM, PO, PA tombes : ils se remettent APRES l'over, il ne le bloquent pas)
+                     and not (POIDS.get(x, 0) >= LOURD and l["max"] - l["val"] <= qte(x, tailles(x)[-1]))]
+    if jet_incomplet and not avec_puits:
+        vises = [x for x in vises if not (L[x]["cible"] > L[x]["max"] > 0)]
+        if not vises:
+            return {"texte": "ATTENDS L'OVER : " + ", ".join(f"{L[x]['nom']} {L[x]['val']}" for x in jet_incomplet)
+                    + " sous le minimum et sans bonne rune — l'over de "
+                    + ", ".join(L[x]["nom"] for x, l in L.items() if l["cible"] > l["max"] > 0)
+                    + " se fera une fois le jet complet"}
     # l'over d'une ligne du jet passe avant les exos lourds (PO, PM, PA) : le PO toujours apres l'over
-    s = max(vises, key=lambda x: (L[x]["max"] > 0 and POIDS.get(x, 0) < LOURD, pds(x, qte(x, "base"))))
-    c, sans = essais([s], lambda l: l["cible"])
+    # Une ligne sans rune jouable (Do poussee a 38 pour 40 : la Pa ferait 41, au-dessus du plafond) ne bloque
+    # plus tout : on passe a la ligne suivante (l'over de vita, le PO...).
+    c, sans, coincees, a_acheter = [], [], [], []
+    for s in sorted(vises, key=lambda x: (L[x]["max"] > 0 and POIDS.get(x, 0) < LOURD, pds(x, qte(x, "base"))),
+                    reverse=True):
+        c, sans = essais([s], lambda l: l["cible"])
+        if c:
+            break
+        (a_acheter if sans else coincees).append(L[s]["nom"])
     if not c:
-        return {"texte": f"A ACHETER : runes {L[s]['nom']}" if sans else f"{L[s]['nom']} : plafond atteint"}
+        if a_acheter:
+            return {"texte": "A ACHETER : runes " + ", ".join(a_acheter)}
+        if jet_leger_incomplet:
+            return {"texte": "JET A REPRENDRE : 1 % sorts pose, aucune remontee jouable sur : "
+                    + ", ".join(L[s]["nom"] for s in jet_leger_incomplet), "stop": True}
+        return {"texte": "OBJECTIF ATTEINT (aucune rune ne passe plus sur : " + ", ".join(
+            f"{L[x]['nom']} {L[x]['val']}" for x in vises) + ")"
+            + (f"   | {rel:g} de reliquat : il est perdu si tu équipes ou mets en vente l'item" if rel >= 1 else "")}
+    coince_txt = ("   | coincée : " + ", ".join(coincees)) if coincees else ""
+    # Over presque fini et plus de puits pour la grosse rune (Vita 432, objectif 440 / min 435, 5 de reliquat) :
+    # la plus petite rune qui finit l'objectif (Vita +5, sinon Pa Vita), pas une Ra a 2 % sans puits
+    if 0 < L[s]["max"] < L[s]["val"] and rel < pds(s, qte(s, tailles(s)[-1])):
+        ecart = conf.get("mins", {}).get(s, L[s]["cible"]) - L[s]["val"]
+        fin_ = [t for t in L[s]["dispo"] if t != tailles(s)[-1] and qte(s, t) >= ecart
+                and L[s]["val"] + qte(s, t) <= plafond(s, L[s]["max"])]
+        if ecart > 0 and fin_:
+            t_ = min(fin_, key=lambda t: qte(s, t))
+            (psc_, psn_, _), n_ = probas(histo, s, t_, L[s])
+            c = [(0, MULT[t_], s, t_, psc_, psn_, n_, 0)]
     best = meilleur(c)
     # 3) pas assez de carburant : remonter d'abord les lignes sacrifiables
     sacrif = sum(pds(x, max(0, y["val"] - y["cible"])) for x, y in L.items() if x != s)
-    if L[s]["max"] <= 0 and not entame and rel + sacrif < pds(s, qte(s, best[3])):      # exo seulement
+    if L[s]["max"] <= 0 and s not in ("pa", "pm", "po", "invo") \
+            and not entame and rel + sacrif < pds(s, qte(s, best[3])):      # petits exos seulement
         f, _ = essais([x for x, y in L.items() if y["max"] > 0 and y["cible"] <= 0 and x not in intouchables
                        and y["val"] < y["max"] and x != s], lambda l: l["max"])
         f = [k for k in f if L[k[2]]["val"] + qte(k[2], k[3]) <= L[k[2]]["max"]]
         if f:
             return sortie(max(f), "CARBURANT", sans)
-    return joue(best, "EXO") if L[s]["max"] <= 0 else sortie(best, "OVER", sans)
+    r = joue(best, "EXO" if L[s]["max"] <= 0 else "OVER")     # (over non voulu, Vita 205/200 : gere d'abord)
+    r["texte"] += coince_txt
+    return r
 
 
 # ---------------------------------------------------------------- lecture d'ecran
@@ -1039,14 +1593,16 @@ class Chiffres:
         g = d["gab"].reshape(len(self.lab), -1).astype(np.float32)
         g -= g.mean(axis=1, keepdims=True)
         self.gab = g / (np.linalg.norm(g, axis=1, keepdims=True) + 1e-6)
-        self.douteux = 0
+        self.douteux, self.marge = 0, 1.0
 
     def classer(self, g, dump=True):
         v = _canevas(g).ravel()
         v -= v.mean()
         sc = self.gab @ (v / (np.linalg.norm(v) + 1e-6))
         i = int(sc.argmax())
-        if dump and sc[i] < .75 and self.douteux < 150:          # garde une trace pour ameliorer les gabarits
+        autres = [x for j, x in enumerate(sc) if self.lab[j] != self.lab[i]]
+        self.marge = float(sc[i] - max(autres)) if autres else 1.0     # ecart avec le 2e chiffre possible
+        if dump and (sc[i] < .75 or sc[i] < .86 and self.marge < .02) and self.douteux < 150:          # garde une trace pour ameliorer les gabarits
             self.douteux += 1
             try:
                 d = os.path.join(ICI, "fm_douteux")
@@ -1083,8 +1639,24 @@ class Chiffres:
                     return None
                 g = g[:, cc[0]:cc[-1] + 1]
             ch, sc = self.classer(g, dump)
-            if sc < seuil:
-                return None
+            if not penche and sc < .8 and g.shape[1] > .9 * g.shape[0]:
+                # deux chiffres colles (« 33 » d'Initiative 333 lu comme un seul glyphe) : on coupe a la
+                # colonne la plus vide du milieu et on lit chaque moitie
+                wg = g.shape[1]
+                m0, m1 = int(.3 * wg), int(.7 * wg)
+                cut = m0 + int(np.argmin(g[:, m0:m1].sum(axis=0)))
+                deux = []
+                for part in (g[:, :cut], g[:, cut:]):
+                    cc = np.flatnonzero((part > .4).any(axis=0))
+                    if len(cc) == 0:
+                        break
+                    deux.append(self.classer(part[:, cc[0]:cc[-1] + 1], dump))
+                if len(deux) == 2 and all(x[1] >= .8 and x[0].isdigit() for x in deux):
+                    txt += deux[0][0] + deux[1][0]
+                    continue
+            if sc < seuil or not penche and sc < .86 and self.marge < .02:
+                return None                    # 5 ou 8 ? (ligne survolee par la souris) : pas de valeur au hasard.
+                                               # Pas pour le reliquat (italique) : ses chiffres sont toujours moins nets
             txt += ch
         return txt
 
@@ -1099,7 +1671,9 @@ class Noms:
             d = np.load(F_NOMS)
             self.noms, self.larg = [str(x) for x in d["noms"]], [int(x) for x in d["larg"]]
             self.vec, self.icone = d["vec"].astype(np.float32), d["icone"].astype(np.float32)
-            garde = [i for i, n in enumerate(self.noms) if n]      # purge les anciens « nom illisible »
+            # purge les anciens « nom illisible » et les noms incomplets qui ne designent pas une seule stat
+            # (« Résistance », « Resistan ce » : ils faisaient lire la ligne Eau comme une 2e ligne Feu)
+            garde = [i for i, n in enumerate(self.noms) if n and code_stat(n, False)]
             if len(garde) < len(self.noms):
                 self.noms, self.larg = [self.noms[i] for i in garde], [self.larg[i] for i in garde]
                 self.vec, self.icone = self.vec[garde], self.icone[garde]
@@ -1261,6 +1835,8 @@ def lire_ligne(bgr, rect, ocr, cache, chiffres):
         return None
     if maxi is None:
         return None
+    if maxi > 0 and int(txt) > plafond(code, maxi):
+        return None                                 # 6116 en Ré feu (max 7) : chiffres colles a autre chose, pas une valeur
     dispo = _dispo(bgr, rect, code)
     return code, {"nom": nom_code(code), "min": mini or 0, "max": maxi, "val": int(txt), "dispo": dispo,
                   "stock": _stocks(bgr, rect, dispo, chiffres), "rect": rect}
@@ -1309,6 +1885,50 @@ def nom_rune(s, t):
 _ACHATS_PREC = []
 
 
+def ravito_actif(regl):
+    """Interrupteur « Conseils de ravitaillement » (onglet Stock de runes) : actif sauf s'il a ete coupe."""
+    return (regl or {}).get("_ravito", {}).get("actif", True)
+
+
+def lignes_stock(lignes, conf=None, stocks=None):
+    """Vue stock des lignes naturelles et des exos demandes (stock inconnu hors tableau)."""
+    out = dict(lignes or {})
+    demandes = dict((conf or {}).get("exos", {}))
+    petit = (conf or {}).get("petit_exo")
+    if petit in PETITS_EXOS:
+        demandes[petit] = 1
+    for code, cible in demandes.items():
+        if cible > 0 and code in POIDS and code not in out:
+            out[code] = {"dispo": [], "stock": {}, "exo_stock": True}
+            n = (stocks or {}).get(code)
+            if isinstance(n, int) and not isinstance(n, bool) and n >= 0:
+                out[code]["dispo"], out[code]["stock"] = ["base"], {"base": n}
+    return out
+
+
+def stocks_plan_suffisants(plan, etat, regl):
+    """Annuler un depart obsolete seulement sur des stocks effectivement relus."""
+    if not plan or not etat:
+        return False
+    for a in plan:
+        cle=a.get("cle", "")
+        if "/" not in cle:
+            return False
+        s,t=cle.split("/",1)
+        r=(regl or {}).get(cle,{})
+        if r.get("actif",True) is False or r.get("alerte",STOCK_ALERTE) <= 0:
+            continue
+        l=etat.get("lignes",{}).get(s,{})
+        if not l or l.get("rate") or l.get("occulte"):
+            return False
+        n=l.get("stock",{}).get(t)
+        if not isinstance(n,int) or isinstance(n,bool) or n < 0:
+            return False
+        if n < r.get("alerte",STOCK_ALERTE) and n < r.get("cible",STOCK_CIBLE):
+            return False
+    return True
+
+
 def liste_achats(lignes, regl):
     """Runes de l'item en cours passees sous leur seuil d'alerte : [{rune, stock, acheter, lots, prix, budget}].
     regl : {"stat/taille": {"alerte": n, "cible": n, "prix": kamas par rune}} ; alerte 0 = rune non suivie."""
@@ -1320,7 +1940,7 @@ def liste_achats(lignes, regl):
     if len(parties) >= 2 and 2 * len(parties) > len(connues):
         # Plus de la moitie des cases de runes ont disparu d'un coup : une fenetre cache le tableau (ou il se
         # redessine). Ce n'est pas un stock vide : on garde la derniere liste fiable.
-        return list(_ACHATS_PREC)
+        return [a for a in _ACHATS_PREC if regl.get(a.get("cle"), {}).get("actif", True) is not False]
     for s, l in lignes.items():
         if s not in POIDS or s == "?" or l.get("occulte") or l.get("rate"):
             continue                                 # ligne survolee, selectionnee ou non relue : chiffres peu fiables
@@ -1331,24 +1951,31 @@ def liste_achats(lignes, regl):
                 if n is None:
                     continue                         # nombre illisible sur cette image
                 _RUNES_VUES.add(cle)
-            elif cle in _RUNES_VUES or cle in regl:
-                n = 0                                # la case s'est videe (ou rune suivie jamais en stock)
+            elif l.get("exo_stock") and t == "base":
+                continue  # stock inconnu : recherche inventaire avant tout parcours
+            elif cle in _RUNES_VUES:
+                n = 0                                # case observee sur l'item courant puis videe
             else:
                 continue
             r = regl.get(cle, {})
+            if r.get("actif", True) is False:
+                continue
             alerte, cible = int(r.get("alerte", STOCK_ALERTE)), int(r.get("cible", STOCK_CIBLE))
             if alerte <= 0 or n >= alerte or cible <= n:
                 continue
             q = -(-(cible - n) // 10) * 10           # jamais a l'unite : arrondi au lot de 10 superieur
             prix = r.get("prix")
             lots = [f"{k}×{t_}" for k, t_ in ((q // 1000, 1000), (q % 1000 // 100, 100), (q % 100 // 10, 10)) if k]
-            out.append({"rune": nom_rune(s, t), "stock": n, "acheter": q, "lots": " + ".join(lots),
+            out.append({"cle": cle, "rune": nom_rune(s, t), "stock": n, "acheter": q, "lots": " + ".join(lots),
                         "recherche": recherche_rune(s, t, regl),
-                        "prix": prix, "budget": q * prix if prix else None})
+                        "prix": prix, "budget": q * prix if prix else None,
+                        "verifier_stock": True, "alerte": alerte, "cible": cible})
     _ACHATS_PREC[:] = sorted(out, key=lambda a: a["stock"])
     return list(_ACHATS_PREC)
 
 
+PETITS_EXOS = ("agi", "fo", "int", "cha", "ini")   # 1 de puits chacun (Ini : +10)
+RUNES_APPRISES = set()   # runes d'exo dont l'image est apprise (dossier fm_runes)
 _EXOS_ATTENDUS = []     # exos demandes dans l'objectif de l'item en cours (pour nommer une ligne d'exo illisible)
 
 
@@ -1400,13 +2027,20 @@ def _reliquat_zone(bgr, x, w, y0, y1, chiffres):
             elif .3 < pos < .7 and cw >= 2:
                 txt += "-" if not txt else ""
             continue
-        sub = e[:, xa + cx:xa + cx + cw].copy()
-        sub[:max(0, cy - 1)] = 0
-        sub[cy + ch_ + 1:] = 0
-        t = chiffres.nombre(sub, [(0, cw - 1)], penche=.2)
-        if not t or not t.isdigit():
-            return None
-        txt += t
+        # deux chiffres italiques qui se touchent (« 44 » de 44.8) forment un seul bloc : on le coupe en
+        # autant de chiffres que sa largeur en contient (un chiffre fait environ 0,55 x la hauteur du texte)
+        k_ = max(1, round(cw / (.55 * H)))
+        bornes = [round(cw * i / k_) for i in range(k_ + 1)]
+        for a_, b_ in zip(bornes, bornes[1:]):
+            sub = np.zeros_like(e)
+            sub[:, xa + cx + a_:xa + cx + b_] = e[:, xa + cx + a_:xa + cx + b_]
+            sub[:max(0, cy - 1)] = 0
+            sub[cy + ch_ + 1:] = 0
+            sub = sub[:, xa + cx + a_:xa + cx + b_]
+            t = chiffres.nombre(sub, [(0, b_ - a_ - 1)], penche=.2)
+            if not t or not t.isdigit():
+                return None
+            txt += t
     try:
         return float(txt)
     except ValueError:
@@ -1426,6 +2060,8 @@ def trouver_popup(bgr):
 
 def trouver_rune(bgr, gab, indice):
     """Position (x, y) du gabarit d'une rune dans l'inventaire affiche, ou None."""
+    if gab is None or float(gab.std()) < 25:
+        return None                     # gabarit vide (case vide apprise par erreur) : il colle a toutes les cases vides
     gh, gw = gab.shape[:2]
     if indice:
         x0, y0 = max(0, indice[0] - 8), max(0, indice[1] - 8)
@@ -1491,6 +2127,9 @@ def charger_txt(chemin):
         return ""
 
 
+DUREE_MAX = 3600            # au-dela d'une heure, une « duree » est forcement une erreur de mesure
+
+
 class Bilan:
     """Ce que l'outil constate tout seul sur les points pas encore valides en jeu : ecrit dans fm_bilan.json
     (donnees) et fm_bilan.txt (lisible). Rien n'est envoye nulle part : les fichiers restent dans le dossier."""
@@ -1499,6 +2138,10 @@ class Bilan:
         self.f, self.t, self.sale = os.path.join(ICI, "fm_bilan"), 0.0, False
         self.d = charger_json_brut(self.f + ".json") or {}
         self.d.setdefault("depuis", time.strftime("%Y-%m-%d %H:%M"))
+        du = self.d.get("durees", {})
+        for k in [k for k, e in du.items() if not 0 <= e.get("max", 0) <= DUREE_MAX]:
+            du.pop(k)                                # mesure faussee par l'ancien bug (heure systeme) : on la refait
+            self.sale = True
         self.t_zero = 0.0
         self.remise_a_zero()
 
@@ -1530,6 +2173,9 @@ class Bilan:
         self.sale = True
 
     def duree(self, quoi, sec):
+        if not 0 <= sec <= DUREE_MAX:                # durée impossible (horloge remise à zéro ailleurs) : ignorée
+            self.note("erreurs", f"duree ignoree pour {quoi} : {sec:.0f} s")
+            return
         e = self.d.setdefault("durees", {}).setdefault(quoi, {"n": 0, "total": 0.0, "max": 0.0})
         e["n"], e["total"], e["max"] = e["n"] + 1, round(e["total"] + sec, 3), round(max(e["max"], sec), 3)
         self.sale = True
@@ -1730,6 +2376,15 @@ def charger_json(chemin, defaut):
 def noter_passe(avant, apres, reco, histo, item=""):
     """Deduit la rune passee et son resultat en comparant deux lectures stables, et l'apprend."""
     A, B = avant["lignes"], apres["lignes"]
+    if set(A) != set(B):
+        # une ligne a change de nom entre les deux lectures : lecture douteuse... sauf une ligne d'exo (max 0)
+        # qui apparait (exo passe) ou disparait (exo perdu), ou une ligne pas relue d'un cote seulement
+        # (Initiative 333 mal lue juste apres un PA rate) : on compare les lignes vues des deux cotes
+        diff_ = set(A) ^ set(B)
+        if any(A.get(x, B.get(x))["max"] != 0 for x in diff_) and len(diff_) > 1:
+            return
+        A = {x: y for x, y in A.items() if x in B or y["max"] == 0}
+        B = {x: y for x, y in B.items() if x in A or y["max"] == 0}
     gains = [s for s in B if s in A and B[s]["val"] > A[s]["val"]]
     gains += [s for s in B if s not in A and B[s]["max"] == 0 and B[s]["val"] > 0]      # exo passe
     pertes = [s for s in A if B.get(s, {"val": 0})["val"] < A[s]["val"]]
@@ -1757,6 +2412,7 @@ def noter_passe(avant, apres, reco, histo, item=""):
     r0, r1 = avant["reliquat"] or 0, apres["reliquat"] or 0
     i = 2 if not gains else (0 if not pertes and r1 >= r0 else 1)
     histo.setdefault(ctx, [0, 0, 0])[i] += 1
+    histo.setdefault(s + "|" + ctx, [0, 0, 0])[i] += 1
     try:
         with open(F_HISTO, "w", encoding="utf-8") as f:
             json.dump(histo, f)
@@ -1769,6 +2425,14 @@ def noter_passe(avant, apres, reco, histo, item=""):
             f.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')};{item};{s};{t};{ctx};{l['val']};{l['max']};"
                     f"{('SC', 'SN', 'EC')[i]};{perdu};{r0:g};{r1:g};"
                     f"{reco.get('taille', '')} {reco.get('stat', '')}\n")
+        # etat complet avant / apres chaque passe : pour comparer ta facon de FM aux conseils de l'outil
+        with open(os.path.join(ICI, "fm_passes_detail.jsonl"), "a", encoding="utf-8") as f:
+            f.write(json.dumps({"t": time.strftime("%Y-%m-%d %H:%M:%S"), "item": item, "rune": f"{t} {s}",
+                                "res": ("SC", "SN", "EC")[i], "rel": [r0, r1],
+                                "avant": {x: y["val"] for x, y in A.items()},
+                                "apres": {x: y["val"] for x, y in B.items()},
+                                "conseil": f"{reco.get('taille', '')} {reco.get('stat', '')}".strip(),
+                                "texte": str(reco.get("texte", ""))[:160]}, ensure_ascii=False) + "\n")
     except OSError:
         pass
     log(f"  passe : {t} {s} ({ctx}) -> {('SC', 'SN', 'EC')[i]}")
@@ -1803,7 +2467,7 @@ def mode_image(chemin, ocr, histo):
     print("  reliquat :", etat["reliquat"])
     connu = trouver_item(charger_items(), signature(etat["lignes"]))
     print("  item :", connu["nom"] if connu else "inconnu (objectif = max partout)")
-    reco = recommander(etat, connu or {}, histo)
+    reco = recommander_live(etat, connu or {}, histo)
     print(">>", reco["texte"])
     for x, y, w, h in etat["rows"]:
         cv2.rectangle(bgr, (x, y), (x + w, y + h), (0, 255, 255), 1)
@@ -1917,6 +2581,9 @@ class Panneau:
         self.apprendre = None            # (code, heure limite, position notee, pret) pendant l'apprentissage
         F = self.FOND
         self.win = w = tk.Toplevel(root)
+        if INTERFACE_WEB[0]:
+            w.withdraw()                     # ancienne fenetre : jamais montree, la page web la remplace
+            w.attributes("-alpha", 0.0)
         w.title("FM - objectif de l'item")
         habiller(w, F)
         w.attributes("-topmost", True)
@@ -1927,12 +2594,9 @@ class Panneau:
         self.etat.pack(fill="x", padx=10, pady=(8, 4))
         haut = tk.Frame(w, bg=F)
         haut.pack(fill="x", padx=10)
-        tk.Label(haut, text="Type de FM", bg=F, fg=self.GRIS).pack(side="left")
+        tk.Label(haut, text="Item", bg=F, fg=self.GRIS).pack(side="left")
         self.nom = Champ(haut, width=28)
         self.nom.pack(side="left", padx=(4, 14))
-        tk.Label(haut, text="Nom dans le jeu", bg=F, fg=self.GRIS).pack(side="left")
-        self.nom_jeu = Champ(haut, width=28)
-        self.nom_jeu.pack(side="left", padx=(4, 14))
         tk.Label(haut, text="Présélection", bg=F, fg=self.GRIS).pack(side="left")
         self.choix = ttk.Combobox(haut, state="readonly", width=26, values=[it["nom"] for it in self.items])
         self.choix.pack(side="left", padx=4)
@@ -1956,6 +2620,19 @@ class Panneau:
                                    values=["(aucun)"] + [nom_code(c) for c in self.codes_exo])
         self.plan_b.current(0)
         self.plan_b.pack(side="left", padx=4)
+        tk.Label(exo, text="Petit exo", bg=F, fg=self.GRIS).pack(side="left", padx=(16, 0))
+        self.petit_exo = ttk.Combobox(exo, state="readonly", width=12,
+                                      values=["(aucun)"] + [nom_code(c) for c in PETITS_EXOS])
+        self.petit_exo.current(0)
+        self.petit_exo.pack(side="left", padx=4)
+        finition = tk.Frame(w, bg=F)
+        finition.pack(fill="x", padx=10, pady=4)
+        tk.Label(finition, text="Ligne bonus apres le jet atteint (reliquat restant)", bg=F, fg=self.GRIS).pack(side="left")
+        self.finition = ttk.Combobox(finition, state="readonly", width=24,
+                                    values=["(aucune)"] + [nom_code(c) for c in self.codes_exo])
+        self.finition.current(0)
+        self.finition.pack(side="left", padx=4)
+        Bouton(exo, text="Apprendre la rune", command=self._apprendre_petit).pack(side="left", padx=4)
         tk.Label(w, bg=F, fg=self.GRIS, justify="left", anchor="w", font=("Segoe UI", 8),
                  text="Objectif sous le max ou « jetable » = ligne dont on se fout : remontée seulement comme "
                       "carburant d'un exo   |   au-dessus du max = over (plafond : puits 101)\n"
@@ -1978,7 +2655,18 @@ class Panneau:
         cacher(w)
         self.cmds, self.rev, self.t_web, self.calib, self.msg_calib = queue.Queue(), 0, 0.0, None, ("", True)
         self.msg_stock = ("", True)
-        self.file = [n for n in charger_json(F_FILE, []) if any(it["nom"] == n for it in self.items)]
+        from fm_file_atelier import JournalFile
+        self.journal_file = JournalFile(os.path.join(ICI,'fm_file_suivi.json'))
+        try:
+            if not self.journal_file.chemin.exists():
+                anciens = charger_json(F_FILE, [])
+                if anciens:
+                    self.journal_file.planifier(anciens,self.items)
+            self.file = [t['profil']['nom'] for t in self.journal_file.attentes]
+        except Exception as err:
+            self.file = []
+            self.journal_file.erreur = str(err)
+            log('File bloquee : '+str(err))
         if INTERFACE_WEB[0]:
             w.withdraw()                 # les reglages se font dans la page web ; cette fenetre reste en secours
 
@@ -1989,9 +2677,11 @@ class Panneau:
 
     def _sauver_file(self):
         try:
-            with open(F_FILE, "w", encoding="utf-8") as f:
-                json.dump(self.file, f, ensure_ascii=False)
-        except OSError as err:
+            self.journal_file.planifier(self.file,self.items)
+            from fm_fichiers import ecrire_texte
+            ecrire_texte(F_FILE,json.dumps(self.file,ensure_ascii=False))
+        except Exception as err:
+            self.journal_file.erreur = str(err)
             log(f"file d'items non sauvegardee : {err}")
 
     # ---- page web de reglages : la page envoie des commandes, executees ici (fil des fenetres)
@@ -2000,9 +2690,18 @@ class Panneau:
         if not form:
             return
         self._met(self.nom, form.get("nom", ""))
-        self._met(self.nom_jeu, form.get("nom_jeu", ""))
+        if "nom_jeu" in form:
+            self.nom_jeu = str(form.get("nom_jeu") or "").strip()
+        if "metier_depart" in form:
+            from fm_demarrage import METIERS as metiers_depart
+            self.metier_depart = form.get("metier_depart") if form.get("metier_depart") in metiers_depart else ''
         pb = form.get("plan_b")
         self.plan_b.current(self.codes_exo.index(pb) + 1 if pb in self.codes_exo else 0)
+        pe = form.get("petit_exo")
+        self.petit_exo.current(PETITS_EXOS.index(pe) + 1 if pe in PETITS_EXOS else 0)
+        if "finition" in form:
+            fi = form.get("finition")
+            self.finition.current(self.codes_exo.index(fi) + 1 if fi in self.codes_exo else 0)
         for s, d in (form.get("rangs") or {}).items():
             r = self.rangs.get(s)
             if not r:
@@ -2039,8 +2738,7 @@ class Panneau:
         elif quoi == "preselection":
             it = next((i for i in self.items if i["nom"] == c.get("nom")), None)
             if it:
-                self.appliquer(it)
-                self.etat.config(text="Présélection appliquée : vérifie puis Enregistrer", fg=self.ROUGE)
+                self.charger_preselection(it)
         elif quoi == "avis_limite" and str(c.get("n", "")).isdigit():
             if c.get("avis") in ("regle", "probleme"):
                 BILAN.d.setdefault("avis", {})[str(c["n"])] = c["avis"]
@@ -2059,6 +2757,8 @@ class Panneau:
             self._sauver_file()
         elif quoi == "stock":
             self.msg_stock = self.sauver_stock(c.get("rows") or {}, c.get("marge"))
+        elif quoi == "ravito":
+            self.msg_stock = self.basculer_ravito(bool(c.get("actif")))
         elif quoi == "calibrer" and c.get("k") in LIEUX_DEFAUT:
             self.calib = (c["k"], time.time() + 4)
             self.msg_calib = (f"Place ta souris sur : {LIEUX_DEFAUT[c['k']][2]} (4 secondes)...", False)
@@ -2080,6 +2780,13 @@ class Panneau:
             k, self.calib = self.calib[0], None
             self.msg_calib = self.calibrer_point(k)
         SUIVI.liste_items, SUIVI.file = [it["nom"] for it in self.items], list(self.file)
+        try:
+            active = self.journal_file.active
+            SUIVI.file_suivi = {'en_cours':active['profil']['nom'] if active else None,
+                                'termines':sum(t['etat']=='termine' for t in self.journal_file.d['taches']),
+                                'erreur':None}
+        except Exception as err:
+            SUIVI.file_suivi = {'en_cours':None,'termines':None,'erreur':str(err)}
         if time.time() - self.t_web < .25:
             return
         self.t_web = time.time()
@@ -2094,25 +2801,32 @@ class Panneau:
         if regl is None:
             regl = self.stock_regl = charger_json(F_STOCK, {})
         stock = []
-        for s, l in (self.lignes or {}).items():
+        for s, l in lignes_stock(self.lignes, self.conf, getattr(self, "stock_exos", {})).items():
             if s not in POIDS:
                 continue
             for i, t in enumerate(tailles(s)):
                 cle = f"{s}/{t}"
-                n = l.get("stock", {}).get(t, 0 if t not in l.get("dispo", ()) else "?")
+                n = l.get("stock", {}).get(t, "? (exo)" if l.get("exo_stock") else (0 if t not in l.get("dispo", ()) else "?"))
+                if n is None:
+                    n = "?"
                 x = regl.get(cle, {})
-                stock.append({"cle": cle, "nom": nom_rune(s, t), "n": n, "debut": i == 0,
+                stock.append({"cle": cle, "nom": nom_rune(s, t), "n": n if l.get("stock") else ("? (exo)" if l.get("exo_stock") else n), "debut": i == 0,
+                              "actif": x.get("actif", True),
                               "alerte": x.get("alerte", STOCK_ALERTE), "cible": x.get("cible", STOCK_CIBLE),
                               "prix": x.get("prix", ""), "rech": recherche_rune(s, t, regl)})
         i_pb = self.plan_b.current()
         lieux = Guide.lieux()
         SUIVI.reglages = {
             "rev": self.rev, "etat": str(self.etat.cget("text")), "ok": str(self.etat.cget("fg")) != self.ROUGE,
-            "nom": self.nom.get(), "nom_jeu": self.nom_jeu.get().strip(), "items": [it["nom"] for it in self.items],
+            "nom": self.nom.get(), "nom_jeu": getattr(self, "nom_jeu", "") or "", "items": [it["nom"] for it in self.items],
+            "metier_depart": getattr(self, "metier_depart", ""),
             "plan_b": self.codes_exo[i_pb - 1] if isinstance(i_pb, int) and i_pb > 0 else None,
+            "petit_exo": self._petit_exo(),
+            "finition": self._finition(),
+            "petits": [{"c": c, "nom": nom_code(c)} for c in PETITS_EXOS],
             "codes": [{"c": c, "nom": nom_code(c), "puits": f"{POIDS[c]:g}"} for c in self.codes_exo],
             "rangs": rangs, "conseil": SUIVI.texte, "stop": SUIVI.stop,
-            "stock": {"rows": stock, "marge": regl.get("_marge", {}).get("pct", MARGE_PRIX),
+            "stock": {"rows": stock, "marge": regl.get("_marge", {}).get("pct", MARGE_PRIX), "ravito": ravito_actif(regl),
                       "msg": self.msg_stock[0], "ok": self.msg_stock[1]},
             "lieux": [{"k": k, "nom": v[2], "x": lieux[k][0], "y": lieux[k][1]} for k, v in LIEUX_DEFAUT.items()],
             "calib": self.msg_calib[0], "calib_ok": self.msg_calib[1]}
@@ -2127,7 +2841,8 @@ class Panneau:
             vp = str(v.get("prix", "")).strip().replace(" ", "")
             if not (va.isdigit() and vc.isdigit()) or vp and not vp.isdigit():
                 return f"À corriger : {nom_rune(*cle.split('/'))} (nombres entiers seulement)", False
-            regl[cle] = {"alerte": int(va), "cible": int(vc)}
+            regl[cle] = {"alerte": int(va), "cible": int(vc),
+                         "actif": v.get("actif", regl.get(cle, {}).get("actif", True)) is not False}
             if vp:
                 regl[cle]["prix"] = int(vp)
             s_, t_ = cle.split("/")
@@ -2144,6 +2859,24 @@ class Panneau:
             return f"Sauvegarde impossible : {err}", False
         self.stock_regl = regl
         return "Stock enregistré à " + time.strftime("%H:%M:%S"), True
+
+    def basculer_ravito(self, actif):
+        """Coupe ou remet les conseils de ravitaillement. Coupe : un ravitaillement en cours est abandonne."""
+        regl = dict(getattr(self, "stock_regl", None) or charger_json(F_STOCK, {}))
+        regl["_ravito"] = {"actif": actif}
+        try:
+            with open(F_STOCK, "w", encoding="utf-8") as f:
+                json.dump(regl, f, indent=1)
+        except OSError as err:
+            return f"Sauvegarde impossible : {err}", False
+        self.stock_regl = regl
+        if not actif and GUIDE.phase is not None:
+            GUIDE.phase, GUIDE.liste = None, []
+            log("ravitaillement abandonne (conseils de ravitaillement coupes)")
+            BILAN.note("parcours", "abandonne")
+        log("conseils de ravitaillement " + ("actives" if actif else "coupes"))
+        return ("Conseils de ravitaillement activés" if actif else "Conseils de ravitaillement coupés : la FM continue sans "
+                "s'arrêter pour acheter") + " (" + time.strftime("%H:%M:%S") + ")", True
 
     def calibrer_point(self, k):
         """Note la position de la souris comme repere k (lecture seule de la position). Retourne (message, reussi)."""
@@ -2248,6 +2981,7 @@ class Panneau:
         return obj
 
     def nouvel_item(self, lignes, sig, nom_lu):
+        self.finition.current(0)
         """Appele quand un autre item est pose dans l'atelier."""
         self.lignes = {s: dict(l) for s, l in lignes.items() if l["max"] > 0}
         self.sig = set(sig)
@@ -2259,24 +2993,37 @@ class Panneau:
             self._met(self._rang(s, l["nom"], l["min"], l["max"], l["val"]), l["max"])
         self.proposer()
         connu = trouver_item(self.items, sig)
-        file = getattr(self, "file", None) or []
+        from fm_demarrage import profil_correspond
+        depart = getattr(self,"profil_file",None) or getattr(self,"profil_demarrage",None)
+        depart = depart if depart and profil_correspond(depart,lignes) else None
+        self.nom_jeu = (nom_lu or "").strip()
+        if nom_lu:                                   # le nom lu dans le jeu departage les presélections proches
+            meme_nom = [it for it in self.items if it.get("nom_jeu") and norm(it["nom_jeu"]) == norm(nom_lu)
+                        and proche(it["sig"], sig) >= .5]
+            if meme_nom and connu not in meme_nom:
+                connu = max(meme_nom, key=lambda it: proche(it["sig"], sig))
+        if depart:
+            connu = depart
+        file = [] if depart else (getattr(self, "file", None) or [])
         if file:                                       # le premier item de la file qui ressemble a celui pose
-            voulu = next((it for n in file for it in self.items
+            voulu = next((it for n in file[:1] for it in self.items
                           if it["nom"] == n and proche(it["sig"], sig) >= .5), None)
             if voulu is not None:
                 connu = voulu
-                self.file.remove(voulu["nom"])
-                self._sauver_file()
                 SUIVI.evenement("file ok", f"Item posé : {voulu['nom']}, objectif chargé"
                                 + (f" — ensuite : {self.file[0]}" if self.file else " — file terminée"), 5)
             else:
                 SUIVI.evenement("file non", "L'item posé ne ressemble à aucun item de ta file : "
                                 + (f"objectif de {connu['nom']} chargé" if connu else "objectif à régler"), 5)
         self._met(self.nom, nom_lu)
-        self._met(self.nom_jeu, "")                    # a saisir ; la fiche connue le remet (detection auto : a faire)
         if connu:
+            mode_depart = self.mode.get() if depart and hasattr(self,"mode") else None
             self.appliquer(connu)
             self.conf = self._conf(connu)
+            if mode_depart == "automatique":
+                self.mode.set("automatique")
+                self._mode_change()
+            self.profil_demarrage = None
             self.etat.config(text=f"Objectif chargé : {connu['nom']}", fg=self.VERT)
         else:
             self.conf = None
@@ -2346,7 +3093,10 @@ class Panneau:
                 self._met(a, None)
             fin_pa = obj - qte(s, "pa")
             haut = plafond(s, r["max"])               # la Ra reste permise jusqu'au plafond de la ligne
-            if "ra" in r["plages"]:
+            # ligne qui reste sous le palier des Pa (Do poussee : la Pa passe bien jusqu'a ~50, objectif 40) :
+            # pas de Ra, la Pa monte jusqu'au bout (sinon « la laisser redescendre a 30 pour la Ra »)
+            sans_ra = s not in ("pui", "sa") and obj <= r["max"] and obj <= palier(s, "pa")
+            if "ra" in r["plages"] and not sans_ra:
                 q = qte(s, "ra")
                 debut = obj - q                       # par defaut : le dernier saut vers l'objectif
                 # la Ra reste permise jusqu'au plafond quand la ligne vise haut (over voulu, ligne
@@ -2354,14 +3104,31 @@ class Panneau:
                 fin = haut if obj > r["max"] else obj - q // 2
                 if s not in ("pui", "sa") and obj > palier(s, "pa"):
                     debut, fin = min(debut, palier(s, "pa")), haut   # au-dela du palier des Pa (60, 300 vita)
-                elif s == "pui":
-                    debut, fin = (SEUIL_RA + 1 if obj > SEUIL_RA + 1 else -1), haut
-                elif s == "sa":
-                    debut, fin = (48 if obj > 48 else -1), haut   # Ra Sagesse : ligne deja haute seulement
+                # Ra des la moitie du max : tes passes (oct. 2026) donnent, par rune, Ra Sagesse +17.8 de
+                # poids net contre +5.6 en Pa, Ra Puissance +7.8 contre +3.1, Ra Vita +6.4 contre +0.4.
+                # Un succes avec la grosse rune remonte le jet d'un coup.
+                debut = min(debut, -(-r["max"] // 2))
+                if s == "sa":
+                    debut = 0                          # Ra Sagesse le plus tot possible : un succes remet la ligne d'un coup
+                fin = min(fin, haut - q)               # une Ra plus haut depasserait le plafond : refusee
+                if obj <= r["max"]:
+                    fin = min(fin, r["max"] - q)       # pas d'over voulu : une Ra qui franchit le max (Vita 362 -> 412)
+                                                       # passe tres mal ; la derniere Ra part de max - 50 au plus
                 if debut >= 0 and debut + q <= haut:
                     self._met(r["plages"]["ra"][0], debut)
                     self._met(r["plages"]["ra"][1], fin)
-                    fin_pa = min(fin_pa, debut - 1)
+                    if obj > r["max"] or s in CARAC:  # over voulu, ou Fo/Int/Cha/Agi (au-dela de 60, Ra seulement)
+                        fin_pa = min(fin_pa, debut - 1)
+                    fin_pa = min(fin_pa, palier(s, "pa") - 1)   # jamais de Pa a partir de son palier (Puissance 60 et plus)
+                    # sinon la Pa reste permise par-dessus : la Ra passe en premier dans sa plage, la Pa
+                    # finit la ligne quand la Ra depasserait (Sagesse 31-32 pour 35)
+            if s == "do_cri" and obj - qte(s, "pa") >= 0:
+                # Do critiques : runes normales tout du long, la Pa seulement quand elle finit pile (9 -> 12)
+                self._met(r["plages"]["base"][0], 0)
+                self._met(r["plages"]["base"][1], obj - 1)
+                self._met(r["plages"]["pa"][0], obj - qte(s, "pa"))
+                self._met(r["plages"]["pa"][1], obj - qte(s, "pa"))
+                continue
             if s.startswith("do_") and s[3:] in ELEMS:        # dommages elementaires : Pa pour le dernier saut
                 if obj - qte(s, "pa") >= 1:
                     self._met(r["plages"]["base"][0], 0)       # runes normales jusqu'a 16 pour viser 20
@@ -2383,19 +3150,69 @@ class Panneau:
     def _conf(it):
         return {"cibles": dict(it.get("cibles", {})), "exos": dict(it.get("exos", {})),
                 "regles": dict(it.get("regles", {})), "mins": dict(it.get("mins", {})),
-                "remonte": dict(it.get("remonte", {})), "plan_b": it.get("plan_b")}
+                "remonte": dict(it.get("remonte", {})), "plan_b": it.get("plan_b"), "petit_exo": it.get("petit_exo"),
+                "finition": it.get("finition")}
+
+    def _apprendre_petit(self):
+        """Montre la rune du petit exo (souris dessus dans l'inventaire, 4 secondes) pour qu'on la retrouve."""
+        c = self._petit_exo()
+        if not c:
+            self.etat.config(text="Choisis d'abord la rune du petit exo", fg=self.ROUGE)
+            return
+        self.demander_rune(c)
+        self.etat.config(text=f"Place ta souris sur la rune {nom_rune(c, 'base')} dans l'inventaire (4 secondes)",
+                         fg=self.ROUGE)
+
+    def _petit_exo(self):
+        i = self.petit_exo.current()
+        return PETITS_EXOS[i - 1] if isinstance(i, int) and i > 0 else None
+
+    def _finition(self):
+        i = self.finition.current()
+        return self.codes_exo[i - 1] if isinstance(i, int) and i > 0 else None
 
     def _choisi(self, _evt=None):
         i = self.choix.current()
         if 0 <= i < len(self.items):
-            self.appliquer(self.items[i])
-            self.etat.config(text="Présélection appliquée : vérifie puis ENREGISTRER", fg=self.ROUGE)
+            self.charger_preselection(self.items[i])
+
+    def charger_preselection(self, it):
+        """Hors atelier, afficher le profil sauvegarde sans inventer un jet actuel."""
+        hors_atelier = not getattr(self,"tableau_visible",False)
+        if hors_atelier:
+            for w in self.grille.winfo_children():
+                w.destroy()
+            self.lignes,self.rangs,self.n_rang = {},{},0
+            self.sig = {tuple(s) for s in it.get("sig",[]) if len(s)==3}
+            self._entetes()
+            for s,mini,maxi in it.get("sig",[]):
+                if maxi <= 0 or s not in POIDS:
+                    continue
+                self.lignes[s] = {"nom":nom_code(s),"min":mini,"max":maxi,"val":"?",
+                                  "dispo":[],"stock":{t:None for t in tailles(s)},"profil_seulement":True}
+                self._rang(s,nom_code(s),mini,maxi,"?")
+        self.appliquer(it)   # objectifs, minima et plages sauvegardes, sans les recalculer
+        if hors_atelier:
+            for r in self.rangs.values():
+                if r["exo"]:
+                    r["actuel"].config(text="?")
+            self.conf = self._conf(it)
+            if hasattr(self,"_mode_change"):
+                self._mode_change()
+            self.etat.config(text=f"Objet prévu au prochain F1 : {it['nom']} — profil chargé",fg=self.VERT)
+        else:
+            self.etat.config(text="Présélection appliquée : vérifie puis Enregistrer",fg=self.ROUGE)
 
     def appliquer(self, it):
         self._met(self.nom, it["nom"])
-        self._met(self.nom_jeu, it.get("nom_jeu", ""))
+        self.metier_depart = it.get("metier_depart", "")
+        fi = it.get("finition")
+        self.finition.current(self.codes_exo.index(fi) + 1 if fi in self.codes_exo else 0)
+        self.nom_jeu = it.get("nom_jeu", "")
         pb = it.get("plan_b")
         self.plan_b.current(self.codes_exo.index(pb) + 1 if pb in self.codes_exo else 0)
+        pe = it.get("petit_exo")
+        self.petit_exo.current(PETITS_EXOS.index(pe) + 1 if pe in PETITS_EXOS else 0)
         for s in [s for s, r in self.rangs.items() if r["exo"]]:
             self.retirer_exo(s)
         for s, q in it.get("exos", {}).items():
@@ -2448,23 +3265,59 @@ class Panneau:
         if rate:
             self.etat.config(text="A corriger : " + ", ".join(rate), fg=self.ROUGE)
             return
+        self.items = charger_items()                 # relu du disque : ne jamais ecraser une presélection ajoutee ailleurs
         nom = self.nom.get().strip() or f"Item {len(self.items) + 1}"
+        autre = next((it for it in self.items if it["nom"] == nom and it.get("sig") and self.sig
+                      and proche(it["sig"], self.sig) < .5), None)
+        if autre:
+            # Ce nom appartient a la presélection d'un AUTRE item (lignes differentes) : on ne l'ecrase pas.
+            self.etat.config(text=f"« {nom} » est déjà la présélection d'un autre item"
+                             + (f" ({autre['nom_jeu']})" if autre.get("nom_jeu") else "")
+                             + " : change le nom de la présélection avant d'enregistrer", fg=self.ROUGE)
+            return
         i_pb = self.plan_b.current()
-        fiche = {"nom": nom, "sig": sorted(self.sig), "cibles": cibles, "exos": exos, "regles": regles,
+        nom_jeu = (getattr(self, "nom_jeu", "") or "").strip()
+        sig_ = sorted(self.sig)
+        # Une ligne de la presélection pas lue a l'ecran au moment d'enregistrer (tableau defile : Do % sorts
+        # en bas) : on la garde, avec son objectif, son minimum et ses plages, au lieu de l'effacer.
+        ancien = next((it for it in self.items if it["nom"] == nom), None)
+        if ancien:
+            vus = {x[0] for x in sig_}
+            for x in ancien.get("sig", []):
+                if x[0] not in vus and x[0] not in exos:
+                    sig_.append(x)
+                    for cle, dest in (("cibles", cibles), ("mins", mins), ("remonte", remonte), ("regles", regles)):
+                        if x[0] in ancien.get(cle, {}):
+                            dest[x[0]] = ancien[cle][x[0]]
+            sig_.sort()
+        fiche = {"nom": nom, "nom_jeu": nom_jeu, "metier_depart": getattr(self,"metier_depart", ""), "sig": sig_, "cibles": cibles, "exos": exos, "regles": regles,
                  "mins": mins, "remonte": remonte, "plan_b": self.codes_exo[i_pb - 1] if i_pb > 0 else None,
-                 "nom_jeu": self.nom_jeu.get().strip()}
-        self.items = [it for it in self.items if it["nom"] != nom and proche(it["sig"], self.sig) < .7]
+                 "petit_exo": self._petit_exo(), "finition": self._finition()}
+        try:                                         # copie de securite avant chaque ecriture
+            import shutil
+            if os.path.exists(F_ITEMS):
+                shutil.copyfile(F_ITEMS, F_ITEMS.replace(".json", "_copie.json"))
+        except OSError:
+            pass
+        # on remplace seulement la presélection du meme nom ; les autres presélections du meme item restent
+        self.items = [it for it in self.items if it["nom"] != nom]
         self.items.append(fiche)
         try:
             with open(F_ITEMS, "w", encoding="utf-8") as f:
                 json.dump({"items": self.items}, f, indent=1, ensure_ascii=False)
         except OSError as err:
             log(f"sauvegarde impossible : {err}")
+            self.etat.config(text=f"Sauvegarde impossible : {err}",fg=self.ROUGE)
+            return
         self.conf = self._conf(fiche)
+        # Geste explicite de l'utilisateur : autoriser la verification du profil
+        # ET de l'objet actuel au prochain F1, sans effacer le journal de file.
+        from copy import deepcopy
+        self.reconciliation_file={'id':time.monotonic_ns(),'profil':deepcopy(fiche)}
         self.choix.config(values=[it["nom"] for it in self.items])
         self.etat.config(text=f"Objectif enregistré : {nom}", fg=self.VERT)
-        log(f"objectif enregistre pour {nom} (dans le jeu : {fiche['nom_jeu'] or '?'}) : {cibles} exos {exos} regles {regles} mins {mins} remonte {remonte} "
-            f"plan B {fiche['plan_b']}")
+        log(f"objectif enregistre pour {nom} : {cibles} exos {exos} regles {regles} mins {mins} remonte {remonte} "
+            f"plan B {fiche['plan_b']} petit exo {fiche['petit_exo']} finition {fiche['finition']}")
 
     # ---- reperes du guide de ravitaillement : ou sont la porte, l'hotel de vente, les ateliers...
     def fenetre_reperes(self):
@@ -2505,7 +3358,7 @@ class Panneau:
     # ---- stock de runes : seuils d'alerte, quantite a racheter, prix maximum
     def fenetre_stock(self):
         regl = charger_json(F_STOCK, {})
-        lignes = getattr(self, "lignes", None) or {}
+        lignes = lignes_stock(getattr(self, "lignes", None), self.conf, getattr(self, "stock_exos", {}))
         w = tk.Toplevel(self.win)
         w.title("FM - stock de runes")
         w.configure(bg=self.FOND)
@@ -2516,15 +3369,17 @@ class Panneau:
                                "Texte à taper à l'hôtel de vente")):
             tk.Label(g, text=t, bg=self.CARTE, fg=self.GRIS, font=("Segoe UI", 8, "bold")).grid(
                 row=0, column=c, padx=6, pady=(4, 2), sticky="w")
-        champs, r = {}, 0
+        champs, actifs, r = {}, {}, 0
         for s, l in lignes.items():
             if s not in POIDS:
                 continue
             for t in tailles(s):
                 cle, r = f"{s}/{t}", r + 1
                 n = l.get("stock", {}).get(t, 0 if t not in l.get("dispo", ()) else "?")
-                tk.Label(g, text=nom_rune(s, t), bg=self.CARTE, fg=self.TXT, anchor="w",
-                         font=("Segoe UI", 10, "bold")).grid(row=r, column=0, padx=6, sticky="we")
+                actif = tk.BooleanVar(value=regl.get(cle, {}).get("actif", True))
+                tk.Checkbutton(g, text=nom_rune(s, t), variable=actif, bg=self.CARTE,
+                               fg=self.TXT, selectcolor=self.CARTE, anchor="w",
+                               font=("Segoe UI", 10, "bold")).grid(row=r, column=0, padx=6, sticky="we")
                 tk.Label(g, text=str(n), bg=self.CARTE, fg=self.VERT).grid(row=r, column=1, padx=6)
                 e3 = []
                 for c, (k, d) in enumerate((("alerte", STOCK_ALERTE), ("cible", STOCK_CIBLE), ("prix", "")), 2):
@@ -2536,6 +3391,7 @@ class Panneau:
                 e.grid(row=r, column=5, padx=6, pady=1)
                 self._met(e, recherche_rune(s, t, regl))
                 e3.append(e)
+                actifs[cle] = actif
                 champs[cle] = e3
         bm = tk.Frame(w, bg=self.CARTE)
         bm.pack(pady=(0, 6), ipadx=6, ipady=4)
@@ -2545,7 +3401,7 @@ class Panneau:
         e_marge.pack(side="left")
         self._met(e_marge, regl.get("_marge", {}).get("pct", MARGE_PRIX))
         tk.Label(bm, text="%", bg=self.CARTE, fg=self.TXT).pack(side="left", padx=4)
-        info = tk.Label(w, text="Alerte sous 0 = rune non suivie. Le prix sert à calculer le budget maximum.",
+        info = tk.Label(w, text="Décoche Réapprovisionner pour exclure une rune. Stock exo inconnu : vérifié à l'HDV avant achat.",
                         bg=self.FOND, fg=self.GRIS)
         info.pack(pady=(0, 4))
 
@@ -2555,7 +3411,7 @@ class Panneau:
                 if not (va.isdigit() and vc.isdigit()) or vp and not vp.isdigit():
                     info.config(text=f"A corriger : {cle} (nombres entiers seulement)", fg=self.ROUGE)
                     return
-                regl[cle] = {"alerte": int(va), "cible": int(vc)}
+                regl[cle] = {"alerte": int(va), "cible": int(vc), "actif": actifs[cle].get()}
                 if vp:
                     regl[cle]["prix"] = int(vp)
                 s_, t_ = cle.split("/")
@@ -2664,7 +3520,10 @@ class Suivi:
     PAGE = """<!doctype html><html lang=fr><meta charset=utf-8>
 <meta name=viewport content="width=device-width,initial-scale=1"><title>FM</title>
 <style>body{margin:0;background:#14161c;color:#e8e8ea;font:15px system-ui,sans-serif}
-#c{padding:12px 14px;font-weight:700;font-size:17px;color:#3ddc84;border-bottom:1px solid #2a2d36}
+#c{padding:10px 14px 2px;font-weight:700;font-size:17px;color:#3ddc84;line-height:1.25;height:2.5em;overflow:hidden;
+display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+#cd{padding:0 14px 8px;color:#9aa0ad;font-size:12px;line-height:1.3;height:2.6em;overflow:hidden;
+display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;border-bottom:1px solid #2a2d36}
 #c.stop{color:#ff5a4f}#m{padding:6px 14px;color:#9aa0ad;font-size:13px}
 img{width:100%;display:block}h2{font-size:13px;margin:14px 14px 4px;color:#9aa0ad;text-transform:uppercase}
 table{border-collapse:collapse;margin:0 14px}td,th{padding:3px 12px 3px 0;text-align:left;font-size:14px}
@@ -2678,7 +3537,7 @@ font-weight:700;text-decoration:none}
 #f button{margin:0;padding:8px 13px;font-size:16px}
 #e div{padding:5px 14px;border-bottom:1px solid #22252d}#e b{color:#ffd166}#e span{color:#9aa0ad;margin-right:8px}
 button{margin:8px 14px;padding:8px 12px;background:#2a2d36;color:#e8e8ea;border:0;border-radius:6px}</style>
-<div id=c>connexion...</div><div id=m></div><div id=q></div><img id=i alt="">
+<div id=c>connexion...</div><div id=cd></div><div id=m></div><div id=q></div><img id=i alt="">
 <a id=rg class=lien>Régler l’item posé dans l’atelier</a>
 <h2>File d’items à faire</h2><div style="padding:0 14px"><div id=f></div>
 <select id=n style="width:100%;padding:12px;font-size:16px;background:#2a2d36;color:#e8e8ea;border:0;border-radius:6px"></select>
@@ -2694,12 +3553,12 @@ function bip(){if(navigator.vibrate)navigator.vibrate([200,100,200]);if(!ac)retu
  g.gain.value=.2;o.start();o.stop(ac.currentTime+.35)}
 let nv='',F=[];const N=()=>document.getElementById('n');
 function envoi(){nv='';fetch('/'+K+'/cmd',{method:'POST',body:JSON.stringify({cmd:'file',noms:F})});dessine(null)}
-function dessine(d){if(d){const cle=JSON.stringify([d.items,d.file]);if(cle==nv||document.activeElement===N())return;nv=cle;F=d.file.slice();
+function dessine(d){if(d){const cle=JSON.stringify([d.items,d.file,d.file_suivi]);if(cle==nv||document.activeElement===N())return;nv=cle;F=d.file.slice();
   N().innerHTML='<option value="">+ Ajouter un item à la file…</option>'+d.items.map(x=>'<option>'+esc(x)+'</option>').join('')}
  document.getElementById('f').innerHTML=F.map((x,i)=>'<div><i>'+(i+1)+'.</i><span>'+esc(x)+'</span>'+(i?'<button data-u="'+i+'">↑</button>':'')+'<button data-x="'+i+'">✕</button></div>').join('');
  document.querySelectorAll('#f [data-u]').forEach(b=>b.onclick=()=>{const i=+b.dataset.u;[F[i-1],F[i]]=[F[i],F[i-1]];envoi()});
  document.querySelectorAll('#f [data-x]').forEach(b=>b.onclick=()=>{F.splice(+b.dataset.x,1);envoi()});
- document.getElementById('np').textContent=F.length?'Pose le n° 1 dans l’atelier : son objectif se charge tout seul, puis la file avance.':'File vide. Ajoute les items dans l’ordre où tu veux les faire.'}
+ const suivi=d&&d.file_suivi;document.getElementById('np').textContent=(suivi?(suivi.erreur?'File bloquée : '+suivi.erreur:(suivi.en_cours?'En cours : '+suivi.en_cours+'. ':'')+suivi.termines+' tâche(s) terminée(s). '):'')+(F.length?'Tâches en attente (doublons permis). Chaque réussite est sauvegardée avant de passer à la suivante.':'Aucune tâche en attente.')}
 document.addEventListener('DOMContentLoaded',()=>{document.getElementById('rg').href='/'+K+'/reglages';
  N().onchange=()=>{if(N().value){F.push(N().value);envoi()}N().value='';N().blur()}});
 let qv='';function dec(lot){fetch('/'+K+'/decision',{method:'POST',body:JSON.stringify({nom:qn,lot:lot})});
@@ -2712,7 +3571,8 @@ function question(q){const e=document.getElementById('q');if(!q){e.style.display
  e.querySelectorAll('button').forEach(b=>b.onclick=()=>dec(b.dataset.l===''?null:+b.dataset.l))}
 function esc(t){return String(t).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))}
 async function maj(){if(occ)return;occ=true;try{const r=await fetch('/'+K+'/etat');const d=await r.json();
- const c=document.getElementById('c');c.textContent=d.texte;c.className=d.stop?'stop':'';
+ const c=document.getElementById('c'),pp=String(d.texte).split('|').map(x=>x.trim()).filter(x=>x);c.textContent=pp[0];c.className=d.stop?'stop':'';
+ document.getElementById('cd').textContent=pp.slice(1).join(' · ');
  document.getElementById('m').textContent=d.item+'  |  lu il y a '+d.age+' s';
  document.getElementById('p').textContent=d.exos.length?d.exos[0][1]+' tentative'+(d.exos[0][1]>1?'s':'')+' — '+d.exos[0][0]:'aucun exo demandé';
  document.getElementById('x').innerHTML='<tr><th>Exo visé<th>Tentatives<th>Passés<th>Depuis le dernier<th>Marche précédente passée</tr>'+
@@ -2805,10 +3665,14 @@ input.n,input.p,td input{width:100%!important;padding:10px 6px;font-size:16px}.p
 <main>
 <section id="obj" class="actif">
  <div class="carte"><div class="ligne">
+  <label class="c">Nom de la présélection<input id="nom" style="width:240px"></label>
+  <label class="c" title="Le nom exact de l'item dans le jeu. Rempli tout seul quand l'outil arrive à le lire ; corrige-le au besoin.">Nom de l’item dans le jeu<input id="nomjeu" style="width:240px"></label>
   <label class="c">Présélection<select id="presel" style="width:240px"></select></label>
-  <label class="c">Type de FM<input id="nom" style="width:260px"></label>
-  <label class="c">Nom de l'item dans le jeu<input id="nom_jeu" style="width:260px" placeholder="ex. Bouton de Psikopompe"></label>
+  <label class="c" title="Au premier F1, rejoint l'atelier -83,-40 et charge l'objet de cette preselection.">Atelier de départ<select id="metierdepart"><option value="">Automatique selon le nom</option><option value="joaillomager">Joaillomager</option><option value="cordomager">Cordomager</option><option value="costumager">Costumager</option><option value="forgemager">Forgemager</option><option value="sculptemager">Sculptemager</option><option value="facomager">Facomager</option></select></label>
+  <label class="c" title="Les objectifs et le carburant restent inchanges. Une fois tout le jet atteint, monter cette ligne au max naturel avec le reliquat restant, sans exo ni over.">Ligne bonus — reliquat<select id="finition" style="width:200px"></select></label>
   <label class="c">Plan B (exo de rechange)<select id="planb" style="width:200px"></select></label>
+  <label class="c" title="Rune à 1 de puits tentée dans le reliquat avant le gros exo (PA, PM, PO). Aucun = jamais.">Petit exo<select id="petitexo" style="width:140px"></select></label>
+  <button class="b petit" id="appetit" title="Choisis la rune, puis montre-la avec ta souris dans l'inventaire (4 s)">Apprendre la rune</button>
   <span style="flex:1"></span>
   <label class="sw"><input type="checkbox" id="avance">Réglages avancés (plages Normale / Pa / Ra)</label>
  </div></div>
@@ -2826,7 +3690,8 @@ input.n,input.p,td input{width:100%!important;padding:10px 6px;font-size:16px}.p
  <div class="carte" style="padding:8px 10px 12px;overflow-x:auto"><table id="tstock"></table>
   <div id="videstock" class="vide">Pose un item dans l'atelier pour voir ses runes.</div></div>
  <div class="carte"><div class="ligne"><label class="c">Sans prix max : accepter jusqu'au prix moyen de l'hôtel de vente +
-  <span><input id="marge" class="n"> %</span></label><span style="flex:1"></span>
+  <span><input id="marge" class="n"> %</span></label>
+  <label class="sw" title="Coupé : plus de « stock bas », plus de guide d'achat. Un ravitaillement en cours est abandonné."><input type="checkbox" id="ravito">Conseils de ravitaillement</label><span style="flex:1"></span>
   <span id="msgstock" style="font-weight:600"></span><button class="b principal" id="savestock">Enregistrer le stock</button></div>
   <p class="aide">« Alerte sous » à 0 = rune non suivie. Les achats se font toujours par lots de 10, 100 ou 1000.</p></div>
 </section>
@@ -2868,9 +3733,13 @@ function etiquettes(tr){const o=parseInt(tr.querySelector('[data-f=obj]').value)
  tr.querySelector('.tags').innerHTML=exo?'<span class="etq exo">exo</span>':o===0?'<span class="etq jet">carburant</span>':
   o>mx?'<span class="etq over">over +'+(o-mx)+'</span>':'';}
 function rendre(d){
- $('nom').value=d.nom;$('nom_jeu').value=d.nom_jeu||'';
+ $('nom').value=d.nom;$('nomjeu').value=d.nom_jeu||'';
+ $('metierdepart').value=d.metier_depart||'';
  $('presel').innerHTML='<option value="">— choisir —</option>'+d.items.map(n=>'<option>'+esc(n)+'</option>').join('');
+ $('presel').value=d.items.includes(d.nom)?d.nom:'';
  $('planb').innerHTML='<option value="">(aucun)</option>'+d.codes.map(c=>'<option value="'+c.c+'"'+(c.c===d.plan_b?' selected':'')+'>'+esc(c.nom)+'</option>').join('');
+ $('petitexo').innerHTML='<option value="">(aucun)</option>'+(d.petits||[]).map(c=>'<option value="'+c.c+'"'+(c.c===d.petit_exo?' selected':'')+'>'+esc(c.nom)+'</option>').join('');
+ $('finition').innerHTML='<option value="">(aucune)</option>'+d.rangs.filter(c=>!c.exo&&c.max>0).map(c=>'<option value="'+c.s+'"'+(c.s===d.finition?' selected':'')+'>'+esc(c.nom)+'</option>').join('');
  $('exostat').innerHTML=d.codes.map(c=>'<option value="'+c.c+'">'+esc(c.nom)+'  (puits '+c.puits+')</option>').join('');
  $('videobj').style.display=d.rangs.length?'none':'block';
  let h='';if(d.rangs.length){h='<tr><th>Caractéristique<th class=num>Min<th class=num>Max<th class=num>Actuel'+
@@ -2897,14 +3766,14 @@ function rendre(d){
   '<td class="num gris" id="l_'+l.k+'">'+l.x.toFixed(3)+' ; '+l.y.toFixed(3)+'<td style="text-align:right"><button class="b petit" data-cal="'+l.k+'">Calibrer</button></tr>').join('');
  $('trep').querySelectorAll('[data-cal]').forEach(b=>b.onclick=()=>cmd('calibrer',{k:b.dataset.cal},false));
 }
-function rendreStock(d){const cle=JSON.stringify(d.stock.rows.map(r=>[r.cle,r.alerte,r.cible,r.prix,r.rech]))+d.stock.marge;
+function rendreStock(d){const cle=JSON.stringify(d.stock.rows.map(r=>[r.cle,r.alerte,r.cible,r.prix,r.rech,r.actif]))+d.stock.marge;
  if(cle===stockVu){d.stock.rows.forEach(r=>{const e=document.getElementById('n_'+r.cle);if(e)e.textContent=r.n});return}
  if(document.activeElement&&$('stock').contains(document.activeElement)&&stockVu)return;
  stockVu=cle;$('videstock').style.display=d.stock.rows.length?'none':'block';$('marge').value=d.stock.marge;
  $('tstock').innerHTML=d.stock.rows.length?'<tr><th>Rune<th class=num>En stock<th class=num title="Sous ce nombre, l’outil lance le ravitaillement. 0 = rune non suivie.">Alerte sous'+
   '<th class=num title="Quantité visée après achat.">Remonter à<th class=num title="Prix maximum par rune. Vide = prix moyen de l\'hôtel de vente + le % ci-dessous.">Prix max / rune'+
   '<th title="Doit être exactement le nom affiché sur la fiche de la rune à l\'hôtel de vente.">Texte à taper à l\'hôtel de vente</tr>'+
-  d.stock.rows.map(r=>'<tr data-cle="'+r.cle+'"'+(r.debut?' class=g':'')+'><td class=nom'+(r.debut?' style="border-top-color:var(--bord)"':'')+'>'+esc(r.nom)+
+  d.stock.rows.map(r=>'<tr data-cle="'+r.cle+'"'+(r.debut?' class=g':'')+'><td class=nom'+(r.debut?' style="border-top-color:var(--bord)"':'')+'>'+'<label><input type=checkbox data-f=actif '+(r.actif!==false?'checked':'')+'> '+esc(r.nom)+'</label>'+
   '<td class="num val" id="n_'+r.cle+'">'+esc(r.n)+'<td class=num><input class=n data-f=alerte value="'+esc(r.alerte)+'"><td class=num><input class=n data-f=cible value="'+esc(r.cible)+'">'+
   '<td class=num><input class=n data-f=prix value="'+esc(r.prix)+'"><td class=large><input data-f=rech style="width:220px" value="'+esc(r.rech)+'"></tr>').join(''):'';etiqStock()}
 function etiqStock(){etiq($('tstock'),['','En stock','Alerte sous','Remonter à','Prix max / rune','Texte à taper à l’hôtel de vente'])}
@@ -2917,7 +3786,7 @@ async function bilan(){try{const d=await(await fetch('/'+K+'/limites.json')).jso
  $('tlim').querySelectorAll('[data-n]').forEach(b=>b.onclick=async()=>{await cmd('avis_limite',{n:b.dataset.n,avis:b.dataset.a},false);setTimeout(bilan,500)});
  $('pbilan').textContent=await(await fetch('/'+K+'/bilan.txt')).text()}catch(e){}}
 $('zero').onclick=async()=>{await cmd('bilan_zero',{},false);setTimeout(bilan,500)};
-function form(){const f={nom:$('nom').value,nom_jeu:$('nom_jeu').value,plan_b:$('planb').value||null,rangs:{}};
+function form(){const f={nom:$('nom').value,nom_jeu:$('nomjeu').value,metier_depart:$('metierdepart').value,plan_b:$('planb').value||null,petit_exo:$('petitexo').value||null,finition:$('finition').value||null,rangs:{}};
  $('tobj').querySelectorAll('tr[data-s]').forEach(tr=>{const r={obj:tr.querySelector('[data-f=obj]').value,plages:{}};
   const t=tr.querySelector('[data-f=tol]'),m=tr.querySelector('[data-f=rem]');if(t)r.tol=t.value;if(m)r.rem=m.value;
   tr.querySelectorAll('[data-p]').forEach(i=>{(r.plages[i.dataset.p]=r.plages[i.dataset.p]||['',''])[+i.dataset.i]=i.value});
@@ -2927,9 +3796,11 @@ async function cmd(c,extra,avecForm=true){const corps=Object.assign({cmd:c},extr
   if(!r.ok)$('msg').textContent='Refusé par l’outil (appareil hors du réseau local ?).';}catch(e){$('msg').textContent='PC injoignable'}}
 document.querySelectorAll('#barre [data-c]').forEach(b=>b.onclick=()=>cmd(b.dataset.c,b.dataset.a?{cle:b.dataset.a}:{}));
 $('exoadd').onclick=()=>cmd('ajouter_exo',{code:$('exostat').value,qte:$('exoqte').value});
+$('appetit').onclick=()=>{const c=$('petitexo').value;if(c)cmd('apprendre',{code:c})};
 $('presel').onchange=e=>{if(e.target.value)cmd('preselection',{nom:e.target.value},false)};
+$('ravito').onchange=e=>cmd('ravito',{actif:e.target.checked},false);
 $('savestock').onclick=()=>{const rows={};$('tstock').querySelectorAll('tr[data-cle]').forEach(tr=>{const o={};
- tr.querySelectorAll('[data-f]').forEach(i=>o[i.dataset.f]=i.value);rows[tr.dataset.cle]=o});stockVu='';
+ tr.querySelectorAll('[data-f]').forEach(i=>o[i.dataset.f]=i.type==='checkbox'?i.checked:i.value);rows[tr.dataset.cle]=o});stockVu='';
  cmd('stock',{rows:rows,marge:$('marge').value},false)};
 async function stats(){try{const r=await(await fetch('/'+K+'/stats.json')).json();$('videstats').style.display=r.length?'none':'block';
  $('tstats').innerHTML=r.length?'<tr><th>Rune<th>Situation<th class=num>Passées<th class=num>SC<th class=num>SN<th class=num>Échecs<th class=num>Réussite</tr>'+
@@ -2938,6 +3809,7 @@ async function maj(){if(occ)return;occ=true;try{const d=await(await fetch('/'+K+
  $('lien').textContent='en ligne';$('lien').className='pastille ok';
  $('conseil').textContent=d.conseil;$('conseil').className=d.stop?'stop':'';
  $('msg').textContent=d.etat;$('msg').className='msg '+(d.ok?'ok':'ko');
+ if(document.activeElement!==$('ravito'))$('ravito').checked=d.stock.ravito!==false;
  $('msgstock').textContent=d.stock.msg;$('msgstock').className=d.stock.ok?'ok':'ko';
  if(d.calib){$('msgrep').textContent=d.calib;$('msgrep').className=d.calib_ok?'ok':'ko'}
  if(d.rev!==rev){rev=d.rev;rendre(d)}else{d.rangs.forEach(r=>{const e=document.getElementById('v_'+r.s);if(e)e.textContent=r.val});
@@ -3116,6 +3988,7 @@ setInterval(maj,400);maj();
         if q and time.time() - q["t"] > 15:
             q = GUIDE.demande = None               # la fiche n'est plus a l'ecran
         return {"demande": q, "items": getattr(self, "liste_items", []), "file": getattr(self, "file", []),
+                "file_suivi": getattr(self,"file_suivi",{}),
                 "texte": self.texte, "stop": self.stop, "item": self.item, "age": int(time.time() - self.t),
                 "exos": self.exos, "evenements": self.evs[:40], "n": self.n, "img": self.n_img,
                 "achats": self.achats}
@@ -3247,6 +4120,7 @@ class Guide:
         self.t_fiche, self.fiche, self.t_vu_fiche, self.t_vu_hdv, self.regl = 0.0, None, 0.0, 0.0, None
         self.noms_hdv, self.liste_incomplete = None, False
         self.derog, self.demande = {}, None    # prix acceptes a la main pour une rune ; question en attente
+        self.alertes = []
         self.gabarits, self.cache = {}, {}
         self.det, self.norme, self.refs, self.vue = None, None, {}, (None, None)
 
@@ -3447,7 +4321,7 @@ class Guide:
         clair = (zone[coupe] > 170).reshape(24, ch, 48, cw).sum(axis=(1, 3)).astype(int)
         sombre = (bgr[zy0:zy1, zx0:zx1].max(axis=2)[coupe] < 95).reshape(24, ch, 48, cw).mean(axis=(1, 3)) > .6
         vieux = getattr(self, "empreinte", None)
-        self.t_fiche = t0 = time.time()          # t0 local : t_fiche peut etre remis a 0 par l'autre fil
+        self.t_fiche = t_debut = time.time()       # t_debut : copie locale, t_fiche peut etre remis a 0 par le telephone
         if vieux is not None and time.time() - getattr(self, "t_lu", 0) < FICHE_RELIRE:
             commun = sombre & vieux[1]
             if commun.any() and (sombre != vieux[1]).mean() < .02 and np.abs(clair - vieux[0])[commun].max() <= 4:
@@ -3464,7 +4338,7 @@ class Guide:
                 BILAN.note("erreurs", f"lecture rapide hdv : {type(err).__name__} {str(err)[:80]}")
         if rapide:
             fiches, dial, res, tri = rapide
-            BILAN.duree("lecture rapide hdv", time.time() - t0)
+            BILAN.duree("lecture rapide hdv", time.time() - t_debut)
         else:
             self.t_lent = time.time()
             masque = gris.copy()                                 # discussion, barre du bas, inventaire, carte : effaces
@@ -3513,13 +4387,19 @@ class Guide:
                 for u, x, y in mots:
                     if my + 40 * k < y < my + 330 * k and mx - 110 * k <= x < mx + 330 * k:
                         rangs.setdefault(round(y / (14 * k)), []).append((x, u, y))
+                doublon_lot = False
                 for r in rangs.values():
                     g = re.sub(r"\D", "", "".join(u for x, u, _ in sorted(r) if x < mx + 60 * k))
                     d = re.sub(r"\D", "", "".join(re.sub(r"\D+$", "", u) for x, u, _ in sorted(r) if x >= mx + 60 * k))
                     if g in ("1", "10", "100", "1000") and d:
+                        if int(g) in lots:
+                            doublon_lot = True
+                            break
                         ys[int(g)] = sum(y for _, _, y in r) / len(r)
                         relu = nombre(mx + 60 * k, mx + 215 * k, ys[int(g)])     # relecture serree du prix seul
                         lots[int(g)] = relu if relu and len(str(relu)) == len(d) else int(d)
+                if doublon_lot:
+                    continue
                 unit = sorted(p / n for n, p in lots.items() if n >= 10)
                 if unit and not .5 * unit[len(unit) // 2] <= moyen <= 2 * unit[len(unit) // 2]:
                     continue                                     # prix moyen incoherent avec les lots : mal lu, on se tait
@@ -3563,12 +4443,9 @@ class Guide:
             res.sort(key=lambda r: r[2])
             tri = next(((int(x + 14 * k), int(y)) for u, x, y in mots if norm(u) == "nom" and res
                         and 20 * k < res[0][2] - y < 90 * k and abs(x - res[0][1] + 60 * k) < 60 * k), None)   # en-tete « Nom »
-        # une fiche dont le nom lu ne commence pas par « Rune » (ex. l'item lui-meme a l'hotel de vente) n'est pas une rune
-        fiches = [f_ for f_ in fiches if not norm(f_["nom"])
-                  or difflib.SequenceMatcher(None, norm(f_["nom"])[:4], "rune").ratio() >= .5]
         self.fiche = {"fiches": fiches, "dial": dial, "res": res, "tri": tri} if fiches or dial or res else None
         if not rapide:
-            BILAN.duree("lecture fiche hdv", time.time() - t0)
+            BILAN.duree("lecture fiche hdv", time.time() - t_debut)
         BILAN.pose("systeme", "lectures_hdv_evitees", getattr(self, "n_evite", 0))
         if self.fiche:
             self.t_vu_fiche = time.time()
@@ -3644,7 +4521,10 @@ class Guide:
                 continue                                     # point, deux-points, eclat d'icone : pas un chiffre
             fin = b
             w = b - a + 1
-            n = max(1, round(w / (.66 * h))) if w > .92 * h else 1      # chiffres colles : on partage la largeur
+            # Deux glyphes larges colles (4 et 9, largeur 15 pour hauteur 9)
+            # font deux chiffres, pas trois. L'ancienne estimation .66 donnait
+            # 13 499 -> 134999, parfois avec une confiance trompeuse.
+            n = max(1, round(w / (.75 * h))) if w > .92 * h else 1
             for j in range(n):
                 xa, xb = a + round(j * w / n), a + round((j + 1) * w / n) - 1
                 gl = np.where(m[:, xa:xb + 1], f[:, xa:xb + 1], 0)
@@ -3746,7 +4626,9 @@ class Guide:
                         memo.clear()
                     t = ocr.ligne(cv2.merge([z, z, z]), chiffres=True)
                     BILAN.note("hdv", "nombre douteux relu par le moteur", detail=f"{v} / {t}")
-                    memo[cle] = int(t) if t and len(t) == len(str(v)) else v
+                    # Des chiffres colles peuvent etre decoupes en deux (13 497 -> 134997).
+                    # La relecture doit pouvoir corriger aussi le nombre de chiffres.
+                    memo[cle] = int(t) if t and re.fullmatch(r"[0-9]+", t) else None
                 v = memo[cle]
             return v
 
@@ -3759,11 +4641,19 @@ class Guide:
                 break
             cv2.rectangle(m, (tx - 80, ty - 25), (tx + 80, ty + 25), 0, -1)
             mx, my = tx + 2, ty - 13
-            moyen, lots, ys = nombre(mx + 82, mx + 200, my), {}, {}
+            # S'arreter avant l'icone des kamas : le graphique blanc suivant
+            # peut etre pris pour des chiffres (29 603 lu comme 12).
+            x0, x1 = int(mx + 82), int(mx + 200)
+            prix_zone = bgr[max(0, int(my - 9)):int(my + 9), max(0, x0):x1]
+            dore = ((prix_zone[:, :, 0].astype(float) < .65 * prix_zone[:, :, 1])
+                    & (prix_zone[:, :, 1] > 110) & (prix_zone[:, :, 2] > 140))
+            colonnes = np.flatnonzero(dore.any(axis=0))
+            fin_prix = x0 + int(colonnes[0]) if len(colonnes) else x1
+            moyen, lots, ys = nombre(x0, fin_prix, my), {}, {}
             for i in range(4):
                 y = my + 101.5 + 38.2 * i
                 n, p = nombre(mx - 22, mx + 42, y), nombre(mx + 60, mx + 184, y)
-                if n in (1, 10, 100, 1000) and p:
+                if n == (1, 10, 100, 1000)[i] and p:
                     lots[n], ys[n] = p, y
             unit = sorted(p / n for n, p in lots.items() if n >= 10)
             if not moyen or not lots or unit and not .5 * unit[len(unit) // 2] <= moyen <= 2 * unit[len(unit) // 2]:
@@ -4041,16 +4931,30 @@ class Guide:
             sans_runes = not any(l.get("dispo") for l in etat["lignes"].values())
             if self.phase == "retour":
                 if sans_runes:
-                    return ("RAVITAILLEMENT 7/7 : active l'onglet Ressources de l'inventaire pour voir tes runes",
+                    return ("RAVITAILLEMENT 7/7 : item posé. Clique l'onglet Ressources de l'inventaire pour voir tes "
+                            "runes (si elles n'apparaissent pas, vide la recherche de l'inventaire avec sa croix)",
                             pt("ressources"), True)
                 self.phase, self.vu_hdv = None, False
                 log("ravitaillement termine")
                 BILAN.note("parcours", "termine")
                 self._journal(achats)
+                # Termine = termine : les runes encore basses ne relancent pas de ravitaillement tout de suite.
+                # Elles reviennent si leur stock change, ou dans 30 minutes ; en attendant, la FM continue.
+                self.sautees = {a["rune"]: (a["stock"], time.time()) for a in achats}
+                SUIVI.evenement("ravito fini " + str(int(time.time())), "Ravitaillement terminé, la FM reprend"
+                                + (" (encore bas, laissé de côté 30 min : " + ", ".join(a["rune"] for a in achats) + ")"
+                                   if achats else ""), 5)
+            sautees = getattr(self, "sautees", {})
+            achats = [a for a in achats if not (a["rune"] in sautees and sautees[a["rune"]][0] == a["stock"]
+                                                and time.time() - sautees[a["rune"]][1] < 1800)]
             if self.phase is None and achats:
                 self.phase, self.liste, self.vu_hdv = "sortie", list(achats), False
                 self.t_debut, self.alertes, self.tris = time.time(), [], set()
                 log("ravitaillement : " + ", ".join(f"{a['rune']} x{a['acheter']}" for a in achats))
+            if self.phase in ("sortie", "achat") and not achats and stocks_plan_suffisants(self.liste, etat, self.regl):
+                self.phase, self.liste, self.vu_hdv = None, [], False
+                log("Ravitaillement annule : stocks relus suffisants, ancien plan abandonne")
+                return None
             if self.phase in ("sortie", "achat"):
                 self.phase, self.liste = "sortie", list(achats) or self.liste
                 return ("RAVITAILLEMENT 1/7 : stock bas (" + ", ".join(f"{a['rune']} {a['stock']}" for a in self.liste[:4])
@@ -4100,10 +5004,11 @@ class Guide:
             if not dedans:
                 return ("RAVITAILLEMENT 5/7 : rentre dans l'atelier par la porte", pt("porte"), True)
             if self._inventaire_ouvert(bgr):
-                nj = (getattr(SUIVI, "reglages", None) or {}).get("nom_jeu", "")
-                return ("RAVITAILLEMENT 7/7 : onglet Équipement, "
-                        + (f"tape « {nj} » dans la recherche, " if nj else "")
-                        + "pose ton item dans la fenêtre, puis onglet Ressources", pt("equipement"), True)
+                nom_ = getattr(self, "nom_item", "")
+                return ("RAVITAILLEMENT 7/7 : onglet Équipement"
+                        + (f", tape « {nom_} » dans la recherche de l'inventaire" if nom_ else "")
+                        + ", pose ton item dans la fenêtre, puis onglet Ressources pour voir tes runes",
+                        pt("equipement"), True)
             cle = METIERS.get(self.metier)
             if not cle:
                 return ("RAVITAILLEMENT 6/7 : ouvre l'atelier magique de ton item (touche Y pour voir les ateliers)",
@@ -4124,8 +5029,13 @@ def mode_direct(ecran, ocr, histo):
     # Une seule instance a la fois : la nouvelle ecrit son jeton tout de suite, l'ancienne le voit et se ferme.
     jeton = f"{time.time()} {os.getpid()}"
     f_run = os.path.join(ICI, "fm_run.txt")
-    with open(f_run, "w") as f:
-        f.write(jeton)
+    from fm_fichiers import ecrire_texte
+    ecrire_texte(f_run, jeton)
+    from fm_diagnostic import Diagnostic
+    diagnostic = Diagnostic(os.path.join(ICI, "fm_diagnostic"))
+    from fm_phases import PhaseRemise
+    phase_remise = PhaseRemise()
+    diagnostic.evenement("session", version="diagnostic_v1", programme=os.path.basename(__file__))
     SUIVI.ouvrir = INTERFACE_WEB[0] and windows
     SUIVI.demarrer()
     if windows:
@@ -4196,6 +5106,7 @@ def mode_direct(ecran, ocr, histo):
         img = cv2.imread(os.path.join(d_runes, nf))
         if img is not None and nf.endswith(".png"):
             runes[nf[:-4]] = img
+    RUNES_APPRISES.update(runes)
 
     chiffres = Chiffres()
     cache, stable, vu, n_vu, reco, dernier_txt, memo = {}, None, None, 0, {}, "", {}
@@ -4227,17 +5138,19 @@ def mode_direct(ecran, ocr, histo):
             m = partage["mon"]
             try:
                 t0_ = time.time()
+                t_capture = time.monotonic()
                 img = prendre(m)
                 t1_ = time.time()
                 e_ = lire_ecran(img, ocr, cache, chiffres)
                 t2_ = time.time()
                 GUIDE.origine = (m["left"], m["top"])
+                GUIDE.nom_item = getattr(panneau, "nom_jeu", "") or ""
                 g_ = GUIDE.etape(img, None, [], ocr) if e_ is None else None
                 if GUIDE.phase is not None:                  # ou passe le temps pendant un ravitaillement
                     BILAN.duree("tour : capture", t1_ - t0_)
                     BILAN.duree("tour : lecture de l'atelier", t2_ - t1_)
                     BILAN.duree("tour : guide", time.time() - t2_)
-                boite.put((m, img, e_, g_))
+                boite.put((m, img, e_, g_, t_capture))
             except KeyboardInterrupt:
                 boite.put(None)
                 return
@@ -4258,13 +5171,15 @@ def mode_direct(ecran, ocr, histo):
                 continue
             if recu is None:
                 break
-            m_recu, bgr, etat, g_hors = recu
+            m_recu, bgr, etat, g_hors, t_capture = recu
             if m_recu is not mon:
                 continue                                   # image d'un ecran qu'on ne regarde plus
+            diagnostic.observation(etat, t_capture, bgr if etat else None)
             if n_fps % 3 == 0 and charger_txt(f_run) != jeton:
                 log("Une nouvelle instance a pris le relais, arret.")
                 break
             panneau.image, panneau.ecran = bgr, (mon["left"], mon["top"], bgr.shape[1], bgr.shape[0])
+            panneau.tableau_visible = bool(etat)
             _EXOS_ATTENDUS[:] = [c_ for c_, n_ in ((panneau.conf or {}).get("exos") or {}).items() if n_ > 0]
             cv.delete("all")
             if panneau.apprendre:                          # apprentissage de l'image d'une rune d'exo
@@ -4284,22 +5199,30 @@ def mode_direct(ecran, ocr, histo):
                         panneau.apprendre = (code_a, t_a, pos_a, True)
                 else:
                     px, py = pos_a[0] - mon["left"], pos_a[1] - mon["top"]
-                    if 20 <= px < mon["width"] - 20 and 12 <= py < mon["height"] - 26:
-                        runes[code_a] = bgr[py - 8:py + 22, px - 17:px + 17].copy()
+                    vignette = bgr[py - 8:py + 22, px - 17:px + 17] if 20 <= px < mon["width"] - 20 \
+                        and 12 <= py < mon["height"] - 26 else None
+                    if vignette is not None and float(vignette.std()) < 25:
+                        panneau.etat.config(text="Pas de rune sous la souris (case vide) : recommence, la souris "
+                                                 "au centre de la rune", fg=panneau.ROUGE)
+                        log(f"apprentissage refuse pour {code_a} : case vide sous la souris")
+                    elif vignette is not None:
+                        runes[code_a] = vignette.copy()
                         cv2.imwrite(os.path.join(d_runes, code_a + ".png"), runes[code_a])
                         panneau.etat.config(text=f"Rune {nom_code(code_a)} apprise", fg=panneau.VERT)
+                        RUNES_APPRISES.add(code_a)
                         log(f"rune apprise : {code_a}")
                     else:
                         panneau.etat.config(text="La souris n'était pas sur l'écran du jeu", fg=panneau.ROUGE)
                     panneau.apprendre = None
-            pop = trouver_popup(bgr) if not etat or len(etat["lignes"]) < len(memo) else None
+            # popup du jeu (« Cette forgemagie est impossible »...) : cherche a chaque image, sauf pendant un
+            # ravitaillement (le CONFIRMER de l'hotel de vente est gere par le guide)
+            pop = trouver_popup(bgr) if GUIDE.phase is None else None
             if pop:
+                # seulement le bouton OK (vert) : c'est lui qu'on clique
                 cv.create_rectangle(pop[0] - 4, pop[1] - 4, pop[2] + 4, pop[3] + 4, outline="#00ff66", width=3)
-                lb = pop[2] - pop[0]                       # la croix de fermeture, en haut a droite du popup
-                kx, ky, kr = int((pop[0] + pop[2]) / 2 + 1.257 * lb), int(pop[1] - .473 * lb), max(10, int(.09 * lb))
-                cv.create_rectangle(kx - kr, ky - kr, kx + kr, ky + kr, outline="#00ff66", width=3)
-                cv.create_text(pop[0], pop[1] - 22, anchor="w", text="POPUP du jeu : ferme-le (X ou OK)",
+                cv.create_text(pop[0], pop[3] + 22, anchor="w", text="POPUP du jeu : clique OK",
                                fill="#00ff66", font=("Segoe UI", 12, "bold"))
+                continue                    # tant que le popup est la : aucun autre cadre (le tableau est cache)
             vides = 0 if etat else vides + 1
             if vides >= 2 and len(mons) > 1 and GUIDE.phase is None:   # rien ici : on regarde l'ecran suivant
                 # (pendant un ravitaillement on reste sur l'ecran du jeu)
@@ -4317,6 +5240,7 @@ def mode_direct(ecran, ocr, histo):
                 log(f"{n_fps / (time.time() - t_fps):.1f} lectures/s | lignes du tableau vues : {len(rows_dbg)}"
                     f" | stats lues : {sorted(etat['lignes']) if etat else 'aucune'}"
                     f" | objectif : {'regle' if panneau.conf else 'a regler'}")
+                log(f"PERF diagnostic : {diagnostic.stats()}")
                 if not etat:
                     cv2.imwrite(os.path.join(ICI, "fm_capture_debug.png"), bgr)
                 t_fps, n_fps = time.time(), 0
@@ -4332,6 +5256,7 @@ def mode_direct(ecran, ocr, histo):
                     n_autre += 1
                     if n_autre >= 3:
                         n_autre, sig_item, memo, stable, dernier_rel = 0, set(sig), {}, None, None
+                        phase_remise.reinitialiser()
                         nom_item = lire_nom_item(bgr, etat["rows"], ocr)
                         connu = panneau.nouvel_item(vues, sig_item, nom_item)
                         nom_item = connu["nom"] if connu else nom_item
@@ -4379,6 +5304,9 @@ def mode_direct(ecran, ocr, histo):
                     if stable is not None:
                         res = noter_passe(stable, etat, reco, histo, panneau.nom.get().strip())
                         if res:
+                            diagnostic.evenement("passe_inferee", resultat=res,
+                                avant=resume(stable), apres=resume(etat),
+                                association="derniere action envoyee, non confirmee")
                             item_ = panneau.nom.get().strip()
                             l_res = etat["lignes"].get(res[0], {})
                             if res[2] < 2 and l_res.get("max", 1) == 0:
@@ -4397,13 +5325,15 @@ def mode_direct(ecran, ocr, histo):
                 panneau.maj(etat["lignes"])
                 panneau.ecran = (mon["left"], mon["top"], bgr.shape[1], bgr.shape[0])
                 regl_stock = getattr(panneau, "stock_regl", None) or charger_json(F_STOCK, {})
-                achats = liste_achats(etat["lignes"], regl_stock)
+                achats = liste_achats(lignes_stock(etat["lignes"], panneau.conf, getattr(panneau, "stock_exos", {})), regl_stock) if ravito_actif(regl_stock) else []
                 g = GUIDE.etape(bgr, etat, achats, ocr, regl_stock)
                 if panneau.conf is None:
                     reco, c = {}, None
                     txt = "NOUVEL ITEM : regle l'objectif dans la fenetre FM"
                 else:
-                    reco = recommander(etat, panneau.conf, histo)
+                    t_decision = time.perf_counter()
+                    reco = phase_remise.conseiller(recommander_live, etat, panneau.conf, histo, panneau.nom.get().strip())
+                    duree_decision_ms = 1000 * (time.perf_counter() - t_decision)
                     txt = f"{reco['texte']}   | reliquat {rel}"
                     if panneau.prochain and reco["texte"].startswith("OBJECTIF ATTEINT"):
                         txt += f"   | prochain item : {panneau.prochain}" \
@@ -4441,6 +5371,8 @@ def mode_direct(ecran, ocr, histo):
                             txt = (f"STOP : {echecs} échecs de suite sur cette rune (anormal, elle passe "
                                    f"{1 - p_ec:.0%} du temps), vérifie la lecture et l'objectif   | ") + txt
                             reco = dict(reco, stop=True)
+                    mode_diag = panneau.mode.get() if hasattr(panneau, "mode") else "conseil"
+                    diagnostic.decision(reco, etat, mode_diag, duree_decision_ms)
                     c = None if g else case_rune(etat, reco)
                     if c:
                         cv.create_rectangle(*c, outline="#ff3b30" if reco.get("stop") else "#00ff66", width=3)
@@ -4453,7 +5385,7 @@ def mode_direct(ecran, ocr, histo):
                                 cx, cy, r_ = ou[0] + 17, ou[1] + 8, int(.8 * h)
                                 cv.create_rectangle(cx - r_, cy - r_, cx + r_, cy + r_, outline="#00ff66", width=3)
                                 txt += "   (exo : rune encadrée dans l'inventaire)"
-                            elif gab is None:
+                            elif gab is None and not reco.get("petit_exo"):
                                 txt += "   (exo : rune pas encore apprise, bouton « Apprendre la rune »)"
                             else:
                                 txt += "   (exo : rune introuvable dans l'inventaire affiché)"
@@ -4508,11 +5440,18 @@ def mode_direct(ecran, ocr, histo):
                         log("Tableau non trouve. Capture enregistree : fm_capture_debug.png")
                         SUIVI.evenement("perdu", "Fenêtre de forgemagie non visible", 300)
                     alerte = time.time()
+            diagnostic.evenement("orchestration", tableau=bool(etat), guide=GUIDE.phase,
+                mode=panneau.mode.get() if hasattr(panneau, "mode") else "conseil", profil=panneau.nom.get().strip(),
+                file=list(panneau.file), stop=bool(reco.get("stop")) if etat else False,
+                termine=bool(etat and reco.get("texte", "").startswith("OBJECTIF ATTEINT")))
             root.update()
     except KeyboardInterrupt:
         pass
     except tk.TclError:
         pass
+    finally:
+        partage["fin"] = True
+        diagnostic.fermer()
 
 
 def main():
