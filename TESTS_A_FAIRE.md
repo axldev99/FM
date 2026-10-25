@@ -2,6 +2,10 @@
 
 ## Reprise apres modification volontaire du profil (25 octobre 2026)
 
+Second retest : l'objet est devenu Anneau Volkorne PA alors que la tache Henual etait toujours active. Enregistrer puis F1 sur un autre profil conserve maintenant l'ancienne tache en `suspendu` et active le nouvel objet, uniquement apres deux lectures completes concordantes et sans action incertaine ni protection. Pour reprendre l'ancienne tache suspendue, reposer son jet sauvegarde, choisir son profil, Enregistrer puis F1 ; son identifiant est conserve. Les autres taches et reussites restent intactes.
+
+Multiecran : F1 selectionne maintenant le moniteur ayant la plus grande intersection avec la fenetre Dofus active (coordonnees negatives prises en compte). Le lecteur partage cette nouvelle source et les anciennes captures sont invalidees. En cas d'ecran ambigu, aucune action. Le delai de preparation de l'atelier repart au F1 de reprise, sans renvoyer une commande de trajet. Tester Dofus sur chacun des moniteurs, puis deplacer sa fenetre et refaire F1 ; verifier le message `F1 : capture sur ecran ...`. Ne pas bouger la souris pendant le mode automatique.
+
 Symptome confirme dans le journal : F1 est recu, puis `FILE : objectifs modifies pendant la tache` remet en manuel. La tache Ponctualite d'henual PA conservait petit_exo=agi ; le profil enregistre demandait petit_exo=None. Le jet sauvegarde avait aussi une sagesse differente du jet actuellement pose.
 
 Correction : Enregistrer cree une demande explicite de reconciliation pour le prochain F1. Deux captures fraiches, completes et concordantes de l'objet sont exigees avant mise a jour de la tache active. Le meme profil et la meme signature naturelle sont requis. L'identifiant, les taches suivantes et les reussites sont conserves ; l'ancienne configuration et l'ancien jet restent dans l'historique. Un objet protege ou une action non confirmee ne peuvent pas etre deverrouilles par Enregistrer. F1 seul ne change pas le journal.

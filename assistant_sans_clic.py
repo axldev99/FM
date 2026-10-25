@@ -2784,6 +2784,7 @@ class Panneau:
             active = self.journal_file.active
             SUIVI.file_suivi = {'en_cours':active['profil']['nom'] if active else None,
                                 'termines':sum(t['etat']=='termine' for t in self.journal_file.d['taches']),
+                                'suspendus':sum(t['etat']=='suspendu' for t in self.journal_file.d['taches']),
                                 'erreur':None}
         except Exception as err:
             SUIVI.file_suivi = {'en_cours':None,'termines':None,'erreur':str(err)}

@@ -124,6 +124,21 @@ class FileAtelierTests(unittest.TestCase):
             with self.assertRaises(OSError):j.terminer(jet(pa=1))
         self.assertIsNotNone(JournalFile(self.path).active)
 
+    def test_verrou_windows_transitoire_repris_sans_perdre_la_tache(self):
+        import errno,os
+        j=JournalFile(self.path);j.commencer(self.a,jet())
+        remplacer=os.replace;appels=[]
+        def verrou_temporaire(src,dst):
+            appels.append(True)
+            if len(appels)==1:raise PermissionError(errno.EACCES,'verrou temporaire')
+            return remplacer(src,dst)
+        with mock.patch('fm_file_atelier.os.replace',side_effect=verrou_temporaire),mock.patch('fm_file_atelier.time.sleep') as pause:
+            j.changer_objet(self.b,jet(stat='int'))
+        self.assertEqual(len(appels),2)
+        pause.assert_called_once()
+        self.assertEqual(JournalFile(self.path).active['profil'],self.b)
+        self.assertEqual(JournalFile(self.path).d['taches'][0]['etat'],'suspendu')
+
     def test_journal_corrompu_ou_schema_inconnu_bloque_sans_ecraser(self):
         for texte in ('{','{"version":9,"taches":[]}',
                       '{"version":1,"taches":[{"id":"x","etat":"termine"}]}'):
@@ -308,6 +323,42 @@ class FileAtelierTests(unittest.TestCase):
             with self.assertRaises(OSError):j.reconfigurer(nouveau,jet(48))
         self.assertEqual(j.active['profil'],self.a)
         self.assertEqual(JournalFile(self.path).active['jet'],empreinte(jet()))
+
+    def test_changement_volontaire_conserve_ancienne_tache_et_permet_son_retour(self):
+        j=JournalFile(self.path)
+        ancien=j.commencer(self.a,jet())
+        suivant=j.changer_objet(self.b,jet(stat='int'))
+        self.assertNotEqual(ancien['id'],suivant['id'])
+        j=JournalFile(self.path)
+        self.assertEqual(j.d['taches'][0]['etat'],'suspendu')
+        self.assertEqual(j.d['taches'][0]['jet'],ancien['jet'])
+        self.assertEqual(j.active['profil'],self.b)
+        retour=j.changer_objet(self.a,jet())
+        self.assertEqual(retour['id'],ancien['id'])
+        self.assertEqual(j.d['taches'][1]['etat'],'suspendu')
+
+    def test_changement_objet_refuse_action_incertaine_ou_objet_protege(self):
+        j=JournalFile(self.path);j.commencer(self.a,jet())
+        j.observer(jet(),action={'stat':'fo','taille':'pa'})
+        with self.assertRaises(FileIncertaine):j.changer_objet(self.b,jet(stat='int'))
+        j.observer(jet());j.proteger(jet(pa=1))
+        with self.assertRaises(FileIncertaine):j.changer_objet(self.b,jet(stat='int'))
+        self.assertEqual(j.active['profil'],self.a)
+
+    def test_runtime_enregistrer_autre_item_interrompt_ancienne_navigation(self):
+        j=JournalFile(self.path);ancien=j.commencer(self.a,jet())
+        ns,tour,clock,modes,traces=self.runtime(j)
+        ns['panneau'].charger_preselection(self.b)
+        ns['panneau'].reconciliation_file={'id':2,'profil':self.b}
+        ns['confirmation']=SimpleNamespace(attente=None)
+        ns['confirmation_navigation']=SimpleNamespace(attente=None)
+        ns['GUIDE'].phase='retour'
+        tour(jet(stat='int'));tour(jet(stat='int'))
+        self.assertEqual(j.active['profil'],self.b)
+        self.assertEqual(j.d['taches'][0]['id'],ancien['id'])
+        self.assertEqual(j.d['taches'][0]['etat'],'suspendu')
+        self.assertEqual(modes,['automatique'])
+        self.assertIsNone(ns['GUIDE'].phase)
 
     def test_runtime_enregistrer_puis_f1_reconcilie_sur_deux_captures(self):
         ancien=copy.deepcopy(self.a);ancien['petit_exo']='agi'

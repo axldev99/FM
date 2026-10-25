@@ -7,6 +7,35 @@ from pathlib import Path
 from fm_fichiers import ecrire_texte
 
 
+RUNTIME_ECRAN = r'''
+    def cibler_ecran_dofus():
+        nonlocal mon,i_mon
+        from fm_securite import rectangle_dofus_actif,ecran_de_rectangle
+        try:
+            indice=ecran_de_rectangle(rectangle_dofus_actif(),mons)
+            if indice is None:
+                log('F1 : ecran de Dofus non confirme ; aucune action envoyee')
+                return False
+            if mon is not mons[indice]:
+                i_mon=indice
+                mon=partage['mon']=mons[indice]
+                _COUL[0]=None
+                securite['capture']=securite['lecture']=None
+                securite['reprise_apres']=time.monotonic()
+                file_runtime.update(valide=None,preuve=None,n=0,capture=-1.,reprise_n=0,reprise_preuve=None)
+                GUIDE.vue=(None,None)
+                root.geometry(f"{mon['width']}x{mon['height']}{mon['left']:+d}{mon['top']:+d}")
+                diagnostic.evenement('ecran_dofus_selectionne',ecran=indice+1,rectangle=mon)
+                log(f'F1 : capture sur ecran {indice+1}, fenetre Dofus active')
+            if demarrage.phase=='ATELIER':
+                demarrage.t_atelier=time.monotonic()
+            return True
+        except Exception as err:
+            log('F1 : selection de l ecran impossible : '+str(err))
+            return False
+
+'''
+
 RUNTIME_SECURITE = r'''
     # FM_CLICK_PATCH:SECURITE_V1
     from fm_securite import motif_blocage, fenetre_dofus_active
@@ -1200,9 +1229,15 @@ RUNTIME_FILE = r'''
             if reprise and a:
                 if confirmation.attente is not None or confirmation_navigation.attente is not None:
                     raise FileIncertaine('une action/navigation attend sa confirmation avant la reprise')
-                if GUIDE.phase is not None or file_runtime['fermer']:
+                if GUIDE.phase not in (None,'retour','sortie'):
                     raise FileIncertaine('termine ou verifie la navigation avant de reconfigurer l objet')
-                if not lecture_complete(lecture):return True
+                if not lecture_complete(lecture):
+                    message='FILE : reprise demandee ; pose le bon objet dans l atelier et attends la lecture complete du jet'
+                    SUIVI.texte,SUIVI.stop,SUIVI.t=message,False,time.time()
+                    if file_runtime.get('attente_reprise')!=reprise['id']:
+                        log(message)
+                        file_runtime['attente_reprise']=reprise['id']
+                    return True
                 if not 0<=time.monotonic()-capture<=2:return True
                 profil_reprise=reprise['profil']
                 if panneau.nom.get().strip()!=profil_reprise['nom'] or panneau.conf!=panneau._conf(profil_reprise):
@@ -1213,9 +1248,14 @@ RUNTIME_FILE = r'''
                 file_runtime['reprise_n']=file_runtime.get('reprise_n',0)+1 if preuve==file_runtime.get('reprise_preuve') else 1
                 file_runtime['reprise_preuve']=preuve
                 if file_runtime['reprise_n']<2:return True
-                a=j.reconfigurer(profil_reprise,lecture['lignes'])
+                if profil_reprise['nom']==a['profil']['nom']:
+                    a=j.reconfigurer(profil_reprise,lecture['lignes'])
+                else:
+                    a=j.changer_objet(profil_reprise,lecture['lignes'])
+                    log('FILE : ancienne tache conservee en pause ; nouvel objet confirme')
                 panneau.reconciliation_file=None
-                file_runtime['profil']=None
+                file_runtime.update(profil=None,fermer=False,absences=0,essais_fermeture=0)
+                actualiser_file()
                 diagnostic.evenement('file_reconfiguration_confirmee',tache=a['id'],profil=a['profil']['nom'],jet=a['jet'])
                 log('FILE : profil et objet en cours reconcilies apres Enregistrer')
             elif reprise:
@@ -1983,7 +2023,7 @@ def patch(source):
     )
 
     runtime = (
-        RUNTIME_SECURITE + "    # FM_CLICK_PATCH:CLICK_RUNTIME\n"
+        RUNTIME_SECURITE + RUNTIME_ECRAN + "    # FM_CLICK_PATCH:CLICK_RUNTIME\n"
         "    def position_souris():\n"
         "        point = wintypes.POINT()\n"
         "        user32 = ctypes.windll.user32\n"
@@ -2039,6 +2079,8 @@ def patch(source):
         "            log(\"F1 refuse : la fenetre active n'appartient pas a Dofus (ou verification impossible).\")\n"
         "            return\n"
         "        if f1_neuf and dofus_actif():\n"
+        "            if not cibler_ecran_dofus():\n"
+        "                return\n"
         "            if panneau.mode.get() != \"automatique\" and confirmation_navigation.attente is not None:\n"
         "                confirmation_navigation.abandonner()\n"
         "                diagnostic.evenement(\"navigation_resynchronisee_manuellement\")\n"

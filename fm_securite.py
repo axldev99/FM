@@ -8,6 +8,34 @@ def executable_dofus(chemin):
     return ntpath.basename(chemin).casefold() in ("dofus.exe", "dofus unity.exe")
 
 
+def ecran_de_rectangle(rectangle,ecrans):
+    """Ecran couvrant la plus grande partie de la fenetre, coordonnees signees."""
+    if not rectangle or len(rectangle)!=4:return None
+    x0,y0,x1,y1=rectangle
+    if x1<=x0 or y1<=y0:return None
+    scores=[]
+    for i,m in enumerate(ecrans):
+        aire=max(0,min(x1,m['left']+m['width'])-max(x0,m['left'])) * max(
+            0,min(y1,m['top']+m['height'])-max(y0,m['top']))
+        scores.append((aire,i))
+    scores.sort(reverse=True)
+    if not scores or scores[0][0]<=0 or len(scores)>1 and scores[0][0]==scores[1][0]:return None
+    return scores[0][1]
+
+
+def rectangle_dofus_actif():
+    import ctypes
+    from ctypes import wintypes
+    u=ctypes.windll.user32
+    u.GetForegroundWindow.restype=wintypes.HWND
+    u.GetWindowRect.argtypes=[wintypes.HWND,ctypes.POINTER(wintypes.RECT)]
+    h=u.GetForegroundWindow()
+    if not h or not fenetre_dofus_active():return None
+    r=wintypes.RECT()
+    if not u.GetWindowRect(h,ctypes.byref(r)) or u.GetForegroundWindow()!=h:return None
+    return r.left,r.top,r.right,r.bottom
+
+
 def fenetre_dofus_active():
     """Lecture seule de la fenetre Windows active. Aucun evenement d'entree."""
     import ctypes

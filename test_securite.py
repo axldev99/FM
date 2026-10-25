@@ -11,6 +11,40 @@ ROOT = pathlib.Path(__file__).resolve().parent
 
 
 class SecuriteTests(unittest.TestCase):
+    def test_selection_ecran_fenetre_dofus_sur_quatre_moniteurs(self):
+        from fm_securite import ecran_de_rectangle
+        ecrans=[{'left':x,'top':y,'width':1920,'height':1080} for x,y in
+                ((-1920,874),(-1920,-206),(0,0),(1920,0))]
+        self.assertEqual(ecran_de_rectangle((-1900,-190,-10,850),ecrans),1)
+        self.assertEqual(ecran_de_rectangle((10,30,1910,1060),ecrans),2)
+        self.assertIsNone(ecran_de_rectangle(None,ecrans))
+        self.assertIsNone(ecran_de_rectangle((9999,9999,10000,10000),ecrans))
+        self.assertIsNone(ecran_de_rectangle((-100,0,100,100),ecrans))
+
+    def test_f1_change_source_de_capture_et_invalide_ancienne_lecture(self):
+        from types import SimpleNamespace
+        from unittest import mock
+        ecrans=[{'left':x,'top':y,'width':1920,'height':1080} for x,y in
+                ((-1920,874),(-1920,-206),(0,0),(1920,0))]
+        geometries=[]
+        ns=dict(mons=ecrans,partage={'mon':ecrans[0]},_COUL=['ancienne couleur'],file_runtime={'valide':'ancien objet'},
+                securite={'capture':90,'lecture':90},GUIDE=SimpleNamespace(vue='ancienne image'),
+                root=SimpleNamespace(geometry=geometries.append),
+                diagnostic=SimpleNamespace(evenement=lambda *a,**kw:None),log=lambda _:None,
+                time=SimpleNamespace(monotonic=lambda:100),demarrage=SimpleNamespace(phase='ATELIER',t_atelier=0))
+        exec('def runtime():\n    mon=mons[0]\n    i_mon=0\n'+activer_clics.RUNTIME_ECRAN+
+             '\n    return cibler_ecran_dofus,lambda:(mon,i_mon)\n',ns)
+        choisir,lire=ns['runtime']()
+        with mock.patch('fm_securite.rectangle_dofus_actif',return_value=(-1900,-190,-10,850)):
+            self.assertTrue(choisir())
+        self.assertEqual(lire(),(ecrans[1],1))
+        self.assertIs(ns['partage']['mon'],ecrans[1])
+        self.assertIsNone(ns['securite']['lecture'])
+        self.assertEqual(ns['securite']['reprise_apres'],100)
+        self.assertIsNone(ns['file_runtime']['valide'])
+        self.assertEqual(geometries,['1920x1080-1920-206'])
+        self.assertEqual(ns['demarrage'].t_atelier,100)
+
     def test_identite_processus(self):
         self.assertTrue(executable_dofus(r"C:\Ankama\Dofus.exe"))
         self.assertTrue(executable_dofus(r"C:\Jeux\DOFUS UNITY.EXE"))

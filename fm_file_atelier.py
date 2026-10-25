@@ -5,11 +5,13 @@ identique, deux exemplaires du meme profil sont interchangeables ; sinon la
 reprise exige le jet sauvegarde. Aucune politique de choix de rune ici.
 """
 import copy
+import errno
 import json
 import math
 import os
 from pathlib import Path
 import tempfile
+import time
 import uuid
 
 
@@ -72,7 +74,7 @@ class JournalFile:
                 assert self.d['version']==1 and isinstance(self.d['taches'],list)
                 ids=set()
                 for t in self.d['taches']:
-                    assert t['etat'] in ('attente','en_cours','termine','annule')
+                    assert t['etat'] in ('attente','en_cours','suspendu','termine','annule')
                     assert isinstance(t['profil'],dict) and t['profil'].get('nom')
                     assert t['id'] not in ids
                     ids.add(t['id'])
@@ -93,7 +95,14 @@ class JournalFile:
                 json.dump(d,f,ensure_ascii=False)
                 f.flush()
                 os.fsync(f.fileno())
-            os.replace(tmp,self.chemin)
+            for essai in range(6):
+                try:
+                    os.replace(tmp,self.chemin)
+                    break
+                except OSError as err:
+                    transitoire=err.errno in (errno.EACCES,errno.EBUSY,errno.EINVAL) or getattr(err,'winerror',None) in (5,32,33)
+                    if not transitoire or essai==5:raise
+                    time.sleep(.05*(essai+1))
         finally:
             if os.path.exists(tmp):os.unlink(tmp)
         self.d=d
@@ -186,6 +195,34 @@ class JournalFile:
                                             'profil':t['profil'],'jet':t['jet']})
         t['profil']=copy.deepcopy(profil)
         t['jet']=empreinte(lignes)
+        self._sauver(d)
+        return self.active
+
+    def changer_objet(self,profil,lignes):
+        """Enregistrer explicite sur un autre profil : conserver l'ancien en pause."""
+        self._valider()
+        a=self.active
+        if not a or profil.get('nom')==a['profil']['nom']:
+            raise FileIncertaine('utilise la reconciliation du meme profil')
+        if a.get('action') or a.get('protege'):
+            raise FileIncertaine('ancienne tache protegee ou action incertaine : changement refuse')
+        if not correspond(profil,lignes) or self.protege(lignes):
+            raise FileIncertaine('nouvel objet incomplet, incompatible ou deja protege')
+        d=copy.deepcopy(self.d)
+        ancien=next(t for t in d['taches'] if t['id']==a['id'])
+        candidat=next((t for t in d['taches'] if t['etat']=='suspendu'
+                       and t['profil']['nom']==profil['nom']),None)
+        if candidat and (candidat.get('action') or candidat.get('protege')
+                         or candidat.get('jet')!=empreinte(lignes)):
+            raise FileIncertaine('exemplaire suspendu non retrouve avec certitude')
+        if candidat is None:
+            premier=next((t for t in d['taches'] if t['etat']=='attente'),None)
+            candidat=premier if premier and premier['profil']['nom']==profil['nom'] else None
+        if candidat is None:
+            candidat={'id':uuid.uuid4().hex}
+            d['taches'].append(candidat)
+        ancien['etat']='suspendu'
+        candidat.update(etat='en_cours',profil=copy.deepcopy(profil),jet=empreinte(lignes),action=None)
         self._sauver(d)
         return self.active
 
